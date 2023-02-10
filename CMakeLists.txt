@@ -50,7 +50,6 @@ if(ENABLE_PCH)
     target_precompile_headers(project_options INTERFACE <vector> <string> <map>)
 endif()
 
-find_package(Eigen3 REQUIRED NO_MODULE)
 enable_language(C)
 find_package(HighFive REQUIRED)
 
