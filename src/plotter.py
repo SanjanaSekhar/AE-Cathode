@@ -29,8 +29,8 @@ def plot_ae_loss(train_loss, val_loss):
 
 def plot_3D(input, output, label):
 	
-	input = input.reshape(700,3)
-	output = output.reshape(700,3)
+	input = input.reshape(159,3)
+	output = output.reshape(159,3)
 		
 	input = pd.DataFrame(input, columns = ["pT","eta","phi"])
 	input = input.loc[~(input==0).all(axis=1)]
@@ -95,7 +95,7 @@ val_losses = train_val_losses[:,1].tolist()
 
 plot_ae_loss(losses,val_losses)
 
-input_list = np.loadtxt("test_input_%s.txt"%(ending))[1:]
-output_list = np.loadtxt("test_output_%s.txt"%(ending))[1:]
+input_list = np.loadtxt("test_input_%s.txt"%(ending))[:,:477]
+output_list = np.loadtxt("test_output_%s.txt"%(ending))[:,:477]
 for i in range(len(input_list)):
 	plot_3D(input_list[i], output_list[i], ending+'_%i'%i)

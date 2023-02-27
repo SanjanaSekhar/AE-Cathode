@@ -44,7 +44,7 @@ val_loader = torch.utils.data.DataLoader(dataset = val_set,
 	batch_size = batch_size,
 	shuffle = True)
 test_loader = torch.utils.data.DataLoader(dataset = test_set,
-	batch_size = batch_size,
+	batch_size = 1,
 	shuffle = True)
 
 # AUTOENCODER CLASS
@@ -227,13 +227,13 @@ if test_model:
 		test_loss_per_epoch += test_loss.cpu().data.numpy().item()
 		if idx < 20:
 			print("Loss for this input: ",test_loss.cpu().data.numpy().item())
-			input_list = np.vstack((input_list,input.cpu().detach().numpy()))
-			output_list = np.vstack((output_list,output.cpu().detach().numpy()))
+			input_list = np.vstack((input_list,(event.cpu().detach().numpy())))
+			output_list = np.vstack((output_list,(reconstructed.cpu().detach().numpy())))
 
-	test_losses.append(test_loss_per_epoch/int(test.shape[0]/batch_size))
-	print("Test Loss: %f"%(test_loss_per_epoch/int(test.shape[0]/batch_size)))
+	test_losses.append(test_loss_per_epoch/int(test.shape[0]))
+	print("Test Loss: %f"%(test_loss_per_epoch/int(test.shape[0])))
 
-	np.savetxt("test_input_%s.txt"%(ending), input_list)
-	np.savetxt("test_output_%s.txt"%(ending), output_list)
+	np.savetxt("test_input_%s.txt"%(ending), input_list[1:])
+	np.savetxt("test_output_%s.txt"%(ending), output_list[1:])
 
 
