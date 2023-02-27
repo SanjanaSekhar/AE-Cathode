@@ -18,6 +18,7 @@ from sklearn.model_selection import train_test_split
 
 ending = "022323"
 load_model = True
+test_model = True
 early_stop = 5
 batch_size = 512
 epochs = 700
@@ -104,13 +105,13 @@ loss_function = torch.nn.MSELoss()
 
 # LOAD AN EXISTING MODEL (POSSIBLE BUG)
 if load_model:
-	checkpoint = torch.load("checkpoints/ae_epoch4_%s.pth"%(ending))
+	checkpoint = torch.load("checkpoints/ae_epoch3_%s.pth"%(ending))
 	model.load_state_dict(checkpoint['model_state_dict'])
 	optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 	loaded_epoch = checkpoint['epoch']
 	print("loaded epoch = ",loaded_epoch)
-	loaded_loss_function = checkpoint['loss']
-	print("loaded loss = ",loaded_loss_function)
+	loss_function = checkpoint['loss']
+	print("loaded loss = ",loss_function)
 	train_val_losses = []
 	
 	with open("losses/train_val_losses_%s.txt"%ending,"r") as f:
@@ -123,6 +124,7 @@ if load_model:
 	'''
 	losses,val_losses = [],[]
 	'''
+	
 else:
 	loaded_epoch = 0
 	losses,val_losses = [],[]
@@ -138,102 +140,100 @@ outputs = []
 test_losses = []
 
 # TRAINING & VALIDATION LOOP
-for epoch in range(loaded_epoch,epochs):
 
-	loss_per_epoch, val_loss_per_epoch = 0,0
-	i = 0
-	with tqdm(train_loader, unit="batch") as tepoch:
-		model.train()
-		for event in tepoch:
-			tepoch.set_description(f"Epoch {epoch}")
+if not test_model:
+	
+	for epoch in range(loaded_epoch,epochs):
+
+		loss_per_epoch, val_loss_per_epoch = 0,0
+		i = 0
+		with tqdm(train_loader, unit="batch") as tepoch:
+			model.train()
+			for event in tepoch:
+				tepoch.set_description(f"Epoch {epoch}")
+				if gpu_boole:
+					event = event.cuda()
+
+			  	# Output of Autoencoder
+				reconstructed = model.forward(event)
+
+			  	# Calculating the loss function
+				loss = loss_function(reconstructed, event)
+
+			 
+				#if epoch > 0 and epoch != loaded_epoch:
+				optimizer.zero_grad()
+				loss.backward()
+				optimizer.step()
+
+			 	 # Adding up all losses in a batch
+				#i+=1
+				#print("loss %i = "%i,loss)
+				#print("loss.cpu().data.numpy().item() = ",loss.cpu().data.numpy().item())
+				loss_per_epoch += loss.cpu().data.numpy().item()
+				sleep(0.1)
+		
+		this_loss = loss_per_epoch/math.ceil(train.shape[0]/batch_size)
+		torch.save({
+			'epoch':epoch,
+			'model_state_dict': model.state_dict(),
+	            	'optimizer_state_dict': optimizer.state_dict(),
+	            	'loss': loss_function},
+			"checkpoints/ae_epoch%i_%s.pth"%(epoch%5,ending))
+		losses.append(this_loss)
+		print("Train Loss: %f"%(this_loss))
+		
+		# VALIDATION
+
+		for event in val_loader:
+			model.eval()
 			if gpu_boole:
 				event = event.cuda()
 
-		  	# Output of Autoencoder
 			reconstructed = model.forward(event)
+			val_loss = loss_function(reconstructed, event)
+			val_loss_per_epoch += val_loss.cpu().data.numpy().item()
 
-		  	# Calculating the loss function
-			if load_model:
-				loss = loaded_loss_function(reconstructed, event)
-			else: loss = loss_function(reconstructed, event)
+		val_losses.append(val_loss_per_epoch/math.ceil(validate.shape[0]/batch_size))
+		print("Val Loss: %f"%(val_loss_per_epoch/math.ceil(validate.shape[0]/batch_size)))
+		
+		# EARLY STOPPING
+		flag = 0
+		if early_stop > 0 and epoch > loaded_epoch + early_stop:
+			for e in range(early_stop):
+				if val_losses[-e] > val_losses[-e-1]: flag += 1
+			if flag == early_stop:
+				print("STOPPING TRAINING EARLY, VAL LOSS HAS BEEN INCREASING FOR THE LAST %i EPOCHS"%early_stop)
+				break
 
-		 
-			#if epoch > 0 and epoch != loaded_epoch:
-			optimizer.zero_grad()
-			loss.backward()
-			optimizer.step()
+		with open("losses/train_val_losses_%s.txt"%ending,"w") as f:
+			for loss, val_loss in zip(losses, val_losses):
+				f.write(str(loss)+" "+str(val_loss)+"\n")
 
-		 	 # Adding up all losses in a batch
-			#i+=1
-			#print("loss %i = "%i,loss)
-			#print("loss.cpu().data.numpy().item() = ",loss.cpu().data.numpy().item())
-			loss_per_epoch += loss.cpu().data.numpy().item()
-			sleep(0.1)
-	
-	this_loss = loss_per_epoch/math.ceil(train.shape[0]/batch_size)
-	torch.save({
-		'epoch':epoch,
-		'model_state_dict': model.state_dict(),
-            	'optimizer_state_dict': optimizer.state_dict(),
-            	'loss': loss_function},
-		"checkpoints/ae_epoch%i_%s.pth"%(epoch%5,ending))
-	losses.append(this_loss)
-	print("Train Loss: %f"%(this_loss))
-	
-	# VALIDATION
+	print("========== TRAINING COMPLETE ===========")
 
-	for event in val_loader:
-		model.eval()
+# TESTING
+if test_model:
+
+	test_loss_per_epoch = 0.
+	input_list, output_list = np.zeros((1,478)), np.zeros((1,478))
+	for idx,event in enumerate(test_loader):
 		if gpu_boole:
 			event = event.cuda()
 
+	  
 		reconstructed = model.forward(event)
-		val_loss = loss_function(reconstructed, event)
-		val_loss_per_epoch += val_loss.cpu().data.numpy().item()
+		test_loss = loss_function(reconstructed, event)
+		test_loss_per_epoch += test_loss.cpu().data.numpy().item()
+		if idx < 20:
+			print("Loss for this input: ",test_loss.cpu().data.numpy().item())
+			input_list = np.vstack((input_list,input.cpu().detach().numpy()))
+			output_list = np.vstack((output_list,output.cpu().detach().numpy()))
 
-	val_losses.append(val_loss_per_epoch/math.ceil(validate.shape[0]/batch_size))
-	print("Val Loss: %f"%(val_loss_per_epoch/math.ceil(validate.shape[0]/batch_size)))
-	
-	# EARLY STOPPING
-	flag = 0
-	if early_stop > 0 and epoch > loaded_epoch + early_stop:
-		for e in range(early_stop):
-			if val_losses[-e] > val_losses[-e-1]: flag += 1
-		if flag == early_stop:
-			print("STOPPING TRAINING EARLY, VAL LOSS HAS BEEN INCREASING FOR THE LAST %i EPOCHS"%early_stop)
-			break
+	test_losses.append(test_loss_per_epoch/int(test.shape[0]/batch_size))
+	print("Test Loss: %f"%(test_loss_per_epoch/int(test.shape[0]/batch_size)))
 
-print("========== TRAINING COMPLETE ===========")
+	np.savetxt("test_input_%s.txt"%(ending), input_list)
+	np.savetxt("test_output_%s.txt"%(ending), output_list)
 
-# TESTING
 
-test_loss_per_epoch = 0.
-
-for event in test_loader:
-	if gpu_boole:
-		event = event.cuda()
-
-  
-	reconstructed = model.forward(event)
-	test_loss = loss_function(reconstructed, event)
-	test_loss_per_epoch += test_loss.cpu().data.numpy().item()
-
-test_losses.append(test_loss_per_epoch/int(test.shape[0]/batch_size))
-print("Test Loss: %f"%(test_loss_per_epoch/int(test.shape[0]/batch_size)))
-
-with open("losses/train_val_losses_%s.txt"%ending,"w") as f:
-	for loss, val_loss in zip(losses, val_losses):
-		f.write(str(loss)+" "+str(val_loss)+"\n")
-'''
-# Defining the Plot Style
-plt.style.use('fivethirtyeight')
-plt.xlabel('Iterations')
-plt.ylabel('Loss vs Epochs')
-
-# Plotting the last 100 values
-plt.plot(losses, label="train loss")
-plt.plot(val_losses, label="val loss")
-plt.plot(test_losses, label="test loss")
-plt.legend()
-plt.savefig("AE_loss_%s.png"%ending)
-'''
