@@ -16,19 +16,19 @@ import h5py
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
-ending = "012523"
+ending = "022323"
 load_model = True
 early_stop = 5
 batch_size = 512
-epochs = 500
+epochs = 700
 
 gpu_boole = torch.cuda.is_available()
 print("Is GPU available? ",gpu_boole)
 if load_model: print("Loading model... ")
 
-data = pd.read_hdf("events_LHCO2020_BlackBox1.h5")
+data = pd.read_hdf("events_LHCO2020_BlackBox1_preprocessed.h5")
 data = data.to_numpy()
-
+print(data.shape)
 train, validate, test = np.split(data, [int(.6*len(data)), int(.8*len(data))])
 
 
@@ -54,36 +54,36 @@ class AE(torch.nn.Module):
 
 		# ENCODER
 		self.encoder = torch.nn.Sequential(
-			torch.nn.Linear(2100, 1024),
+			torch.nn.Linear(478, 400),
 			torch.nn.ReLU(),
-			torch.nn.Linear(1024, 512),
+			torch.nn.Linear(400, 300),
 			torch.nn.ReLU(),
-			torch.nn.Linear(512, 256),
+			torch.nn.Linear(300, 200),
 			torch.nn.ReLU(),
-			torch.nn.Linear(256, 128),
+			torch.nn.Linear(200, 100),
 			torch.nn.ReLU(),
-			torch.nn.Linear(128, 64),
+			torch.nn.Linear(100, 50),
 			torch.nn.ReLU(),
-			torch.nn.Linear(64, 32),
+			torch.nn.Linear(50, 25),
 			torch.nn.ReLU(),
-			torch.nn.Linear(32, 16)
+			torch.nn.Linear(25, 10)
 			)
 
 		# DECODER
 		self.decoder = torch.nn.Sequential(
-			torch.nn.Linear(16, 32),
+			torch.nn.Linear(10, 25),
 			torch.nn.ReLU(),
-			torch.nn.Linear(32, 64),
+			torch.nn.Linear(25, 50),
 			torch.nn.ReLU(),
-			torch.nn.Linear(64, 128),
+			torch.nn.Linear(50, 100),
 			torch.nn.ReLU(),
-			torch.nn.Linear(128, 256),
+			torch.nn.Linear(100, 200),
 			torch.nn.ReLU(),
-			torch.nn.Linear(256, 512),
+			torch.nn.Linear(200, 300),
 			torch.nn.ReLU(),
-			torch.nn.Linear(512, 1024),
+			torch.nn.Linear(300, 400),
 			torch.nn.ReLU(),
-			torch.nn.Linear(1024, 2100)
+			torch.nn.Linear(400, 478)
 		
 			)
 
