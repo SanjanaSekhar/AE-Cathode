@@ -30,6 +30,8 @@ if load_model: print("Loading model... ")
 data = pd.read_hdf("events_LHCO2020_BlackBox1_preprocessed.h5")
 data = data.to_numpy()
 print(data.shape)
+print(np.amin(data[:,0]),np.amin(data[:,1]),np.amin(data[:,2]))
+print(np.amax(data[:,0]),np.amax(data[:,1]),np.amax(data[:,2]))
 train, validate, test = np.split(data, [int(.6*len(data)), int(.8*len(data))])
 
 
