@@ -11,7 +11,7 @@ from mpl_toolkits.mplot3d import Axes3D
 import pandas as pd
 
 
-ending = "022323"
+ending = "031723"
 
 
 
@@ -57,8 +57,10 @@ def plot_3D(input, output, label):
 	#surf = ax.plot_trisurf(input['eta'],input['phi'],input['pT'], cmap=plt.cm.coolwarm, linewidth=0.4)
 	surf = ax.bar3d(input['eta'],input['phi'],5,0.2,0.2,input['pT'],color='g',shade=True)
 	in_proxy = plt.Rectangle((0, 0), 1, 1, fc="g")
-	ax.set_xlim(-2.5,2.5)
-	ax.set_ylim(0,6.5)
+	ax.set_ylim(0,1)
+	ax.set_xlim(0,1)
+	#ax.set_xlim(-3.2,3.2)
+	#ax.set_ylim(0,6.5)
 	ax.set_xlabel("eta")
 	ax.set_ylabel("phi")
 	ax.set_zlabel("pT")
