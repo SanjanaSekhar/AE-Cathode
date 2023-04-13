@@ -13,7 +13,6 @@
 #include <range/v3/range/conversion.hpp>
 #pragma GCC diagnostic pop
 #include "highfive/H5File.hpp"
-#include "Eigen/Dense"
 
 using namespace fastjet;
 using namespace ranges;
