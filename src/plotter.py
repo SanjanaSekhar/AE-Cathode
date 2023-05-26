@@ -1,17 +1,17 @@
 import matplotlib
 #matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from scipy.stats import norm
+#from scipy.stats import norm
 import numpy as np
-from matplotlib.backends.backend_pdf import PdfPages
-from scipy import optimize
+#from matplotlib.backends.backend_pdf import PdfPages
+#:from scipy import optimize
 import seaborn as sns
 from mpl_toolkits import mplot3d
 from mpl_toolkits.mplot3d import Axes3D
 import pandas as pd
 
 
-ending = "031723"
+ending = "052623"
 
 
 
@@ -58,7 +58,7 @@ def plot_3D(input, output, label):
 	surf = ax.bar3d(input['eta'],input['phi'],input['pT'],0.02,0.02,0.02,color='g',shade=True)
 	in_proxy = plt.Rectangle((0, 0), 1, 1, fc="g")
 	ax.set_ylim(0,1)
-	ax.set_xlim(0,1)
+	ax.set_xlim(-1,1)
 	#ax.set_xlim(-3.2,3.2)
 	#ax.set_ylim(0,6.5)
 	ax.set_xlabel("eta")
