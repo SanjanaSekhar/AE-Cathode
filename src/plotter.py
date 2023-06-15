@@ -11,7 +11,7 @@ from mpl_toolkits.mplot3d import Axes3D
 import pandas as pd
 
 
-ending = "052623"
+ending = "061523"
 
 
 
@@ -29,8 +29,8 @@ def plot_ae_loss(train_loss, val_loss):
 
 def plot_3D(input, output, label):
 	
-	input = input.reshape(159,3)
-	output = output.reshape(159,3)
+	input = input.reshape(228,3)
+	output = output.reshape(228,3)
 		
 	input = pd.DataFrame(input, columns = ["pT","eta","phi"])
 	input = input.loc[~(input==0).all(axis=1)]

@@ -1,7 +1,7 @@
 import pandas as pd
 
-reader = pd.read_csv("events_rotated.csv", header=None, names=list(range(478)),iterator=True, chunksize=1000000)
+reader = pd.read_csv("events_rotated.csv", header=None, names=list(range(684)),iterator=True, chunksize=1000000)
 
 for i, chunk in enumerate(reader):
     print("Reading chunk %i"%i)
-    chunk.fillna(0).to_hdf("events_LHCO2020_BlackBox1_preprocessed_rotated.h5", "events", mode='a', complib="bzip2")
+    chunk.fillna(0).to_hdf("events_LHCO2020_BlackBox1_preprocessed_rotated.h5", "events_rotated", mode='a', complib="bzip2")

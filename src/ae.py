@@ -16,7 +16,7 @@ import h5py
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
-ending = "052623"
+ending = "061523"
 load_model = True
 test_model = True
 early_stop = 5
@@ -27,15 +27,18 @@ gpu_boole = torch.cuda.is_available()
 print("Is GPU available? ",gpu_boole)
 if load_model: print("Loading model... ")
 
+#data = pd.read_csv("events_rotated.csv", header=None,usecols=np.arange(0,684))
+#print(data.head())
 data = pd.read_hdf("events_LHCO2020_BlackBox1_preprocessed_rotated.h5")
-data = data.to_numpy()[:,:477]
+data = data.to_numpy()[:,:684]
 print(data[0],data[1],data[2])
+
 #print(data.shape)
 #print(np.amin(data[:,0]),np.amin(data[:,3]),np.amin(data[:,1]),np.amin(data[:,4]),np.amin(data[:,2]),np.amin(data[:,5]))
 #print(np.amax(data[:,0]),np.amax(data[:,3]),np.amax(data[:,1]),np.amax(data[:,4]),np.amax(data[:,2]),np.amax(data[:,5]))
 #train, validate, test = np.split(data, [int(.6*len(data)), int(.8*len(data))])
 
-data = data.reshape((1000000,159,3))
+data = data.reshape((1000000,228,3))
 
 print(np.amin(data[:,:,0]), np.amax(data[:,:,0]), np.mean(data[:,:,0])) 
 print(np.amin(data[:,:,1]), np.amax(data[:,:,1]), np.mean(data[:,:,1]))
@@ -53,7 +56,7 @@ data[:,:,1] = [np.zeros((159,)) if 0.0==eta_max[i] else data[i,:,1]/eta_max[i] f
 data[:,:,2] = [np.zeros((159,)) if 0.0==phi_max[i] else data[i,:,2]/phi_max[i] for i in range(1000000)]
 '''
 
-data = data.reshape((1000000,477))
+data = data.reshape((1000000,684))
 #print(pt_max[:30],eta_max[:30],phi_max[:30])
 
 train, validate, test = np.split(data, [int(.6*len(data)), int(.8*len(data))])
@@ -80,8 +83,12 @@ class AE(torch.nn.Module):
 
 		# ENCODER
 		self.encoder = torch.nn.Sequential(
-			torch.nn.Linear(477, 400),
+			torch.nn.Linear(684, 600),
 			torch.nn.ReLU(),
+                        torch.nn.Linear(600, 500),
+                        torch.nn.ReLU(),
+                        torch.nn.Linear(500, 400),
+                        torch.nn.ReLU(),
 			torch.nn.Linear(400, 300),
 			torch.nn.ReLU(),
 			torch.nn.Linear(300, 200),
@@ -109,8 +116,12 @@ class AE(torch.nn.Module):
 			torch.nn.ReLU(),
 			torch.nn.Linear(300, 400),
 			torch.nn.ReLU(),
-			torch.nn.Linear(400, 477)
-		
+			torch.nn.Linear(400, 500),
+                        torch.nn.ReLU(),
+                        torch.nn.Linear(500, 600),
+                        torch.nn.ReLU(),
+		        torch.nn.Linear(600, 684),
+                        
 			)
 
 	def forward(self, x):
@@ -130,7 +141,7 @@ loss_function = torch.nn.MSELoss()
 
 # LOAD AN EXISTING MODEL 
 if load_model:
-	checkpoint = torch.load("checkpoints/ae_epoch0_%s.pth"%(ending))
+	checkpoint = torch.load("checkpoints/ae_epoch2_%s.pth"%(ending))
 	model.load_state_dict(checkpoint['model_state_dict'])
 	optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 	loaded_epoch = checkpoint['epoch']
@@ -241,7 +252,7 @@ if not test_model:
 if test_model:
 
 	test_loss_per_epoch = 0.
-	input_list, output_list = np.zeros((1,477)), np.zeros((1,477))
+	input_list, output_list = np.zeros((1,684)), np.zeros((1,684))
 	for idx,event in enumerate(test_loader):
 		if gpu_boole:
 			event = event.cuda()
