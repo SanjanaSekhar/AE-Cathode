@@ -43,8 +43,8 @@ void ProcessEvent(auto &&event, JetDefinition &jet_def, std::ostream& out) {
 
 //----------------------------------------------------------------------
 int main(int argc, char** argv){
-    cxxopts::Options options("Rotate Events",
-                             "Rotate events to ensure that phi=0 is between the two jets");
+    cxxopts::Options options("Plot Events",
+                             "Plot events dijet mass, mj1, mj2, DR12, tau21_1, tau21_2");
     options.add_options()
         ("i,input", "Filename to read from", cxxopts::value<std::string>())
         ("o,output", "Output file name", cxxopts::value<std::string>())
