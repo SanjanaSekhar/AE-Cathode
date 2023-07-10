@@ -13,6 +13,7 @@
 #include <range/v3/view/transform.hpp>
 #include <range/v3/range/conversion.hpp>
 #include <range/v3/view/tokenize.hpp>
+#include <range/v3/view/remove_if.hpp>
 #include "fastjet/contrib/Nsubjettiness.hh" // In external code, this should be fastjet/contrib/Nsubjettiness.hh
 #pragma GCC diagnostic pop
 
@@ -48,6 +49,7 @@ int main(int argc, char** argv){
     options.add_options()
         ("i,input", "Filename to read from", cxxopts::value<std::string>())
         ("o,output", "Output file name", cxxopts::value<std::string>())
+        ("p,ptmin", "Minimum pt allowed for a particle", cxxopts::value<double>()->default_value("1.0"))
         ("h,help", "Print usage");
 
     auto result = options.parse(argc, argv);
@@ -68,6 +70,7 @@ int main(int argc, char** argv){
         return 1;
     }
     std::string output = result["output"].as<std::string>();
+    double ptmin = result["ptmin"].as<double>();
 
     static constexpr double R = 1.0;
     JetDefinition jet_def(antikt_algorithm, R);
@@ -87,7 +90,7 @@ int main(int argc, char** argv){
         auto tmp = line | views::tokenize(re) 
                           | views::transform([](const auto &v){ return std::stod(v); })
                           | to<std::vector>();
-        auto event = tmp | views::chunk(3) 
+        auto event = tmp | views::chunk(3) | views::remove_if([ptmin](const auto &r) { return r[0] < ptmin; })
                          | views::transform([](const auto &r) { return Convert(r[0], r[1], r[2]); })
                          | to<std::vector>();
         ProcessEvent(event, jet_def, out);
