@@ -39,7 +39,7 @@ void ProcessEvent(auto &&event, JetDefinition &jet_def, std::ostream& out) {
     double tau21_beta1 = nSub21_beta1(jets[0]);
     double tau21_beta2 = nSub21_beta1(jets[1]);
 
-    out << (jets[0]+jets[1]).m() << "," << jets[0].m() << "," << jets[1].m() << jets[0].delta_R(jets[1]) << "," << tau21_beta1 << "," << tau21_beta2 << "\n";
+    out << (jets[0]+jets[1]).m() << "," << jets[0].m() << "," << jets[1].m() << "," << jets[0].delta_R(jets[1]) << "," << tau21_beta1 << "," << tau21_beta2 << "\n";
 }
 
 //----------------------------------------------------------------------
