@@ -28,8 +28,28 @@ PseudoJet Convert(double pt, double eta, double phi) {
     return PseudoJet(px, py, pz, E);
 }
 
-void ProcessEvent(auto &&event, JetDefinition &jet_def, std::ostream& out) {
+size_t FindMaxSize(auto &&event, JetDefinition &jet_def) {
     static constexpr double ptmin = 30;
+    static size_t max;
+
+    ClusterSequence cs(event, jet_def);
+    std::vector<PseudoJet> jets = sorted_by_pt(cs.inclusive_jets(ptmin));
+
+    for(size_t i = 0; i < 2; ++i) {
+        auto constituents = jets[i].constituents();
+        if(constituents.size() > max) {
+            max = constituents.size();
+        }
+    }
+
+    return max;
+}
+
+void ProcessEvent(auto &&event, JetDefinition &jet_def, std::ostream& out, size_t num) {
+    static constexpr double ptmin = 30;
+    static size_t min = 100;
+    static size_t max = 0;
+    static size_t count = 0;
     ClusterSequence cs(event, jet_def);
     std::vector<PseudoJet> jets = sorted_by_pt(cs.inclusive_jets(ptmin));
 
@@ -37,31 +57,32 @@ void ProcessEvent(auto &&event, JetDefinition &jet_def, std::ostream& out) {
     double dphi = std::acos(std::max(std::min((jets[0].px()*jets[1].px()+jets[0].py()*jets[1].py())/(jets[0].pt()*jets[1].pt()),1.0),-1.0));
     std::array<double, 2> shift{-phi1, -phi2};
     if(phi1 > phi2) {
-        shift[0] -= dphi/2;
-        shift[1] += dphi/2;
-    } else {
         shift[0] += dphi/2;
         shift[1] -= dphi/2;
+    } else {
+        shift[0] -= dphi/2;
+        shift[1] += dphi/2;
     }
 
     for(size_t i = 0; i < 2; ++i) {
         auto constituents = jets[i].constituents();
+        if(constituents.size() <= 2) count++;
+        if(constituents.size() <= min) {
+            min = constituents.size();
+            std::cout << "New min: " << min << " at " << num << " : " << count << std::endl;
+        }
+        if(constituents.size() > max) {
+            max = constituents.size();
+            std::cout << "New max: " << max << std::endl;
+        }
         std::sort(constituents.begin(), constituents.end(),
                   [](PseudoJet a, PseudoJet b) { return a.pt() > b.pt(); }); 
-        for(size_t j = 0; j < 114; ++j) {
-            if(j < constituents.size()) {
-                auto &part = constituents[j];
-                double px = cos(shift[i])*part.px() - sin(shift[i])*part.py();
-                double py = cos(shift[i])*part.py() + sin(shift[i])*part.px();
-                part.reset_momentum(px, py, part.pz(), part.E());
-                double phi = part.phi();
-                out << part.pt() << "," << part.rap() << "," << phi << ",";
-            } else {
-                double px = cos(shift[i])*jets[i].px() - sin(shift[i])*jets[i].py();
-                double py = cos(shift[i])*jets[i].py() + sin(shift[i])*jets[i].px();
-                PseudoJet part(px, py, jets[i].pz(), jets[i].E());
-                out << 0 << "," << part.rap() << "," << part.phi() << ",";
-            }
+        for(auto part : constituents) {
+            double px = cos(shift[i])*part.px() - sin(shift[i])*part.py();
+            double py = cos(shift[i])*part.py() + sin(shift[i])*part.px();
+            part.reset_momentum(px, py, part.pz(), part.E());
+            double phi = part.phi();
+            out << part.pt() << "," << part.rap() << "," << phi << ",";
         }
     }
 }
@@ -104,6 +125,7 @@ int main(int argc, char** argv){
     std::string line;
     const auto re = std::regex{"[-+]?[\\d.]+(?:e[-+]?\\d+)?"};
     size_t num = 0;
+    size_t max_size = 0;
     while(std::getline(in, line)) {
         if(num++ % 1000 == 0) {
             std::cout << "Processing event " << num << "\r";
@@ -115,7 +137,8 @@ int main(int argc, char** argv){
         auto event = tmp | views::chunk(3) 
                          | views::transform([](const auto &r) { return Convert(r[0], r[1], r[2]); })
                          | to<std::vector>();
-        ProcessEvent(event, jet_def, out);
-        out << "\n";
+        max_size = FindMaxSize(event, jet_def);
     }
+
+    std::cout << "Max size = " << max_size << std::endl; 
 }

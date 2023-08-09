@@ -13,12 +13,15 @@
 #include <range/v3/view/transform.hpp>
 #include <range/v3/range/conversion.hpp>
 #include <range/v3/view/tokenize.hpp>
+#include <range/v3/view/remove_if.hpp>
+#include "fastjet/contrib/Nsubjettiness.hh" // In external code, this should be fastjet/contrib/Nsubjettiness.hh
 #pragma GCC diagnostic pop
 
 #include <cxxopts.hpp>
 
 using namespace fastjet;
 using namespace ranges;
+using namespace fastjet::contrib;
 
 PseudoJet Convert(double pt, double eta, double phi) {
     double px = pt*cos(phi);
@@ -32,47 +35,21 @@ void ProcessEvent(auto &&event, JetDefinition &jet_def, std::ostream& out) {
     static constexpr double ptmin = 30;
     ClusterSequence cs(event, jet_def);
     std::vector<PseudoJet> jets = sorted_by_pt(cs.inclusive_jets(ptmin));
+    NsubjettinessRatio   nSub21_beta1(2,1, OnePass_WTA_KT_Axes(), UnnormalizedMeasure(1.0));
+    double tau21_beta1 = nSub21_beta1(jets[0]);
+    double tau21_beta2 = nSub21_beta1(jets[1]);
 
-    double phi1 = jets[0].phi(), phi2 = jets[1].phi();
-    double dphi = std::acos(std::max(std::min((jets[0].px()*jets[1].px()+jets[0].py()*jets[1].py())/(jets[0].pt()*jets[1].pt()),1.0),-1.0));
-    std::array<double, 2> shift{-phi1, -phi2};
-    if(phi1 > phi2) {
-        shift[0] -= dphi/2;
-        shift[1] += dphi/2;
-    } else {
-        shift[0] += dphi/2;
-        shift[1] -= dphi/2;
-    }
-
-    for(size_t i = 0; i < 2; ++i) {
-        auto constituents = jets[i].constituents();
-        std::sort(constituents.begin(), constituents.end(),
-                  [](PseudoJet a, PseudoJet b) { return a.pt() > b.pt(); }); 
-        for(size_t j = 0; j < 114; ++j) {
-            if(j < constituents.size()) {
-                auto &part = constituents[j];
-                double px = cos(shift[i])*part.px() - sin(shift[i])*part.py();
-                double py = cos(shift[i])*part.py() + sin(shift[i])*part.px();
-                part.reset_momentum(px, py, part.pz(), part.E());
-                double phi = part.phi();
-                out << part.pt() << "," << part.rap() << "," << phi << ",";
-            } else {
-                double px = cos(shift[i])*jets[i].px() - sin(shift[i])*jets[i].py();
-                double py = cos(shift[i])*jets[i].py() + sin(shift[i])*jets[i].px();
-                PseudoJet part(px, py, jets[i].pz(), jets[i].E());
-                out << 0 << "," << part.rap() << "," << part.phi() << ",";
-            }
-        }
-    }
+    out << (jets[0]+jets[1]).m() << "," << jets[0].m() << "," << jets[1].m() << "," << jets[0].delta_R(jets[1]) << "," << tau21_beta1 << "," << tau21_beta2 << "\n";
 }
 
 //----------------------------------------------------------------------
 int main(int argc, char** argv){
-    cxxopts::Options options("Rotate Events",
-                             "Rotate events to ensure that phi=0 is between the two jets");
+    cxxopts::Options options("Plot Events",
+                             "Plot events dijet mass, mj1, mj2, DR12, tau21_1, tau21_2");
     options.add_options()
         ("i,input", "Filename to read from", cxxopts::value<std::string>())
         ("o,output", "Output file name", cxxopts::value<std::string>())
+        ("p,ptmin", "Minimum pt allowed for a particle", cxxopts::value<double>()->default_value("1.0"))
         ("h,help", "Print usage");
 
     auto result = options.parse(argc, argv);
@@ -93,6 +70,7 @@ int main(int argc, char** argv){
         return 1;
     }
     std::string output = result["output"].as<std::string>();
+    double ptmin = result["ptmin"].as<double>();
 
     static constexpr double R = 1.0;
     JetDefinition jet_def(antikt_algorithm, R);
@@ -112,10 +90,9 @@ int main(int argc, char** argv){
         auto tmp = line | views::tokenize(re) 
                           | views::transform([](const auto &v){ return std::stod(v); })
                           | to<std::vector>();
-        auto event = tmp | views::chunk(3) 
+        auto event = tmp | views::chunk(3) | views::remove_if([ptmin](const auto &r) { return r[0] < ptmin; })
                          | views::transform([](const auto &r) { return Convert(r[0], r[1], r[2]); })
                          | to<std::vector>();
         ProcessEvent(event, jet_def, out);
-        out << "\n";
     }
 }
