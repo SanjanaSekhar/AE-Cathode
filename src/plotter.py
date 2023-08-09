@@ -5,13 +5,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 #from matplotlib.backends.backend_pdf import PdfPages
 #:from scipy import optimize
-import seaborn as sns
+#import seaborn as sns
 from mpl_toolkits import mplot3d
 from mpl_toolkits.mplot3d import Axes3D
 import pandas as pd
 
 
-ending = "061523"
+ending = "062223"
 
 
 
@@ -97,7 +97,7 @@ val_losses = train_val_losses[:,1].tolist()
 
 plot_ae_loss(losses,val_losses)
 
-input_list = np.loadtxt("test_input_%s.txt"%(ending))[:,:477]
-output_list = np.loadtxt("test_output_%s.txt"%(ending))[:,:477]
+input_list = np.loadtxt("test_input_%s.txt"%(ending))[:,:684]
+output_list = np.loadtxt("test_output_%s.txt"%(ending))[:,:684]
 for i in range(len(input_list)):
 	plot_3D(input_list[i], output_list[i], ending+'_%i'%i)
