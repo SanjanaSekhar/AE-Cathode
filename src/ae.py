@@ -16,7 +16,7 @@ import h5py
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
-ending = "061523"
+ending = "062223"
 load_model = True
 test_model = True
 early_stop = 5
@@ -39,7 +39,7 @@ print(data[0],data[1],data[2])
 #train, validate, test = np.split(data, [int(.6*len(data)), int(.8*len(data))])
 
 data = data.reshape((1000000,228,3))
-
+data_unnorm = np.copy(data)
 print(np.amin(data[:,:,0]), np.amax(data[:,:,0]), np.mean(data[:,:,0])) 
 print(np.amin(data[:,:,1]), np.amax(data[:,:,1]), np.mean(data[:,:,1]))
 print(np.amin(data[:,:,2]), np.amax(data[:,:,2]), np.mean(data[:,:,2]))
@@ -98,14 +98,14 @@ class AE(torch.nn.Module):
 			torch.nn.Linear(100, 50),
 			torch.nn.ReLU(),
 			torch.nn.Linear(50, 25),
-			torch.nn.ReLU(),
-			torch.nn.Linear(25, 10)
+			#torch.nn.ReLU(),
+			#torch.nn.Linear(25, 10)
 			)
 
 		# DECODER
 		self.decoder = torch.nn.Sequential(
-			torch.nn.Linear(10, 25),
-			torch.nn.ReLU(),
+			#torch.nn.Linear(10, 25),
+			#torch.nn.ReLU(),
 			torch.nn.Linear(25, 50),
 			torch.nn.ReLU(),
 			torch.nn.Linear(50, 100),
@@ -133,7 +133,7 @@ model = AE()
 if gpu_boole: model = model.cuda()
 
 optimizer = torch.optim.Adam(model.parameters(),
-        lr = 1e-3,
+        lr = 2e-3,
         weight_decay = 1e-8)
 
 loss_function = torch.nn.MSELoss()
@@ -141,7 +141,7 @@ loss_function = torch.nn.MSELoss()
 
 # LOAD AN EXISTING MODEL 
 if load_model:
-	checkpoint = torch.load("checkpoints/ae_epoch2_%s.pth"%(ending))
+	checkpoint = torch.load("checkpoints/ae_epoch3_%s.pth"%(ending))
 	model.load_state_dict(checkpoint['model_state_dict'])
 	optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 	loaded_epoch = checkpoint['epoch']
@@ -268,8 +268,23 @@ if test_model:
 
 	test_losses.append(test_loss_per_epoch/int(test.shape[0]))
 	print("Test Loss: %f"%(test_loss_per_epoch/int(test.shape[0])))
-
-	np.savetxt("test_input_%s.txt"%(ending), input_list[1:])
-	np.savetxt("test_output_%s.txt"%(ending), output_list[1:])
+	data = data_unnorm.reshape((1000000,228,3))
+	print(input_list.shape)
+	input_list = input_list[1:]
+	print(input_list.shape)
+	input_list = input_list.reshape((20,228,3))
+	print(input_list.shape,)
+	input_list[:,:,0] = input_list[:,:,0]*np.amax(data[:,:,0])
+	input_list[:,:,1] = input_list[:,:,1]*np.amax(data[:,:,1])
+	input_list[:,:,2] = input_list[:,:,2]*np.amax(data[:,:,2])
+	input_list = input_list.reshape((20,684))
+        
+	output_list = output_list[1:].reshape((20,228,3))
+	output_list[:,:,0] = output_list[:,:,0]*np.amax(data[:,:,0])
+	output_list[:,:,1] = output_list[:,:,1]*np.amax(data[:,:,1])
+	output_list[:,:,2] = output_list[:,:,2]*np.amax(data[:,:,2])
+	output_list = output_list.reshape((20,684))
+	np.savetxt("test_input_%s.txt"%(ending), input_list)
+	np.savetxt("test_output_%s.txt"%(ending), output_list)
 
 
