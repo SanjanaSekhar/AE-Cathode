@@ -16,12 +16,12 @@ import h5py
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
-ending = "082123"
+ending = "082323"
 load_model = True
 test_model = True
 early_stop = 5
 batch_size = 512
-epochs = 100
+epochs = 300
 
 gpu_boole = torch.cuda.is_available()
 print("Is GPU available? ",gpu_boole)
@@ -43,26 +43,43 @@ data_unnorm = np.copy(data)
 eta = data[:,:,0]
 phi = data[:,:,1]
 pt = data[:,:,2]
+transformed = np.zeros((1000000,228,4))
+
+print("Min max of eta, phi, pt before any transformations: ")
+print(np.amin(eta),np.amax(eta))
+print(np.amin(phi),np.amax(phi))
+print(np.amin(pt),np.amax(pt))
 px = np.multiply(pt,np.cos(phi))
 py = np.multiply(pt,np.sin(phi))
 pz = np.multiply(pt,np.sinh(eta))
+E = np.multiply(pt,np.cosh(eta))
 # shift range to 0->max
-px_min, py_min, pz_min =  np.amin(px),np.amin(py),np.amin(pz)
+px_min, py_min, pz_min, E_min =  np.amin(px),np.amin(py),np.amin(pz),np.amin(E)
 px -= np.amin(px)
 py -= np.amin(py)
 pz -= np.amin(pz)
+E -= np.amin(E)
+print("Min max of px, py, pz, E after shifting range, before scaling:")
 print(np.amin(px), np.amax(px), np.mean(px))
 print(np.amin(py), np.amax(py), np.mean(py))
 print(np.amin(pz), np.amax(pz), np.mean(pz))
+print(np.amin(E), np.amax(E), np.mean(E))
 #standard scaling
-px_mean, py_mean, pz_mean = np.mean(px), np.mean(py), np.mean(pz) #note that this is the mean after shifting the range
-px_std, py_std, pz_std = np.std(px), np.std(py), np.std(pz)
+px_mean, py_mean, pz_mean, E_mean = np.mean(px), np.mean(py), np.mean(pz), np.mean(E) #note that this is the mean after shifting the range
+px_std, py_std, pz_std, E_std = np.std(px), np.std(py), np.std(pz), np.std(E)
 px_scaled = (px - np.mean(px))/np.std(px)
 py_scaled = (py - np.mean(py))/np.std(py)
 pz_scaled = (pz - np.mean(pz))/np.std(pz)
+E_scaled = (pz - np.mean(E))/np.std(E)
 px_norm = px/np.amax(px)
 py_norm = py/np.amax(py)
 pz_norm = pz/np.amax(pz)
+E_norm = E/np.amax(E)
+print("Min max of px, py, pz after scaling:")
+print(np.amin(px_scaled), np.amax(px_scaled), np.mean(px_scaled))
+print(np.amin(py_scaled), np.amax(py_scaled), np.mean(py_scaled))
+print(np.amin(pz_scaled), np.amax(pz_scaled), np.mean(pz_scaled))
+print(np.amin(E_scaled), np.amax(E_scaled), np.mean(E_scaled))
 '''
 print(np.amin(data[:,:,0]), np.amax(data[:,:,0]), np.mean(data[:,:,0])) 
 print(np.amin(data[:,:,1]), np.amax(data[:,:,1]), np.mean(data[:,:,1]))
@@ -80,13 +97,14 @@ data[:,:,1] = [np.zeros((159,)) if 0.0==eta_max[i] else data[i,:,1]/eta_max[i] f
 data[:,:,2] = [np.zeros((159,)) if 0.0==phi_max[i] else data[i,:,2]/phi_max[i] for i in range(1000000)]
 '''
 
-data[:,:,0] = px_scaled
-data[:,:,1] = py_scaled
-data[:,:,2] = pz_scaled
+transformed[:,:,0] = px_scaled
+transformed[:,:,1] = py_scaled
+transformed[:,:,2] = pz_scaled
+transformed[:,:,3] = E_scaled
 #print(pt_max[:30],eta_max[:30],phi_max[:30])
 data = data.reshape((1000000,684))
-
-train, validate, test = np.split(data, [int(.6*len(data)), int(.8*len(data))])
+transformed = transformed.reshape((1000000,228*4))
+train, validate, test = np.split(transformed, [int(.6*len(transformed)), int(.8*len(transformed))])
 
 train_set = torch.tensor(train, dtype=torch.float32)
 val_set = torch.tensor(validate, dtype=torch.float32)
@@ -110,7 +128,11 @@ class AE(torch.nn.Module):
 
 		# ENCODER
 		self.encoder = torch.nn.Sequential(
-			torch.nn.Linear(684, 600),
+			torch.nn.Linear(228*4, 800),
+			torch.nn.ReLU(),
+			torch.nn.Linear(800, 700),
+			torch.nn.ReLU(),
+			torch.nn.Linear(700, 600),
 			torch.nn.ReLU(),
                         torch.nn.Linear(600, 500),
                         torch.nn.ReLU(),
@@ -147,8 +169,12 @@ class AE(torch.nn.Module):
                         torch.nn.ReLU(),
                         torch.nn.Linear(500, 600),
                         torch.nn.ReLU(),
-		        torch.nn.Linear(600, 684),
-                        
+                       	torch.nn.Linear(600, 700),
+                        torch.nn.ReLU(),
+                        torch.nn.Linear(700, 800),
+                        torch.nn.ReLU(),
+                        torch.nn.Linear(800, 228*4),
+                         
 			)
 
 	def forward(self, x):
@@ -279,7 +305,7 @@ if not test_model:
 if test_model:
 
 	test_loss_per_epoch = 0.
-	input_list, output_list = np.zeros((1,684)), np.zeros((1,684))
+	input_list, output_list = np.zeros((1,228*4)), np.zeros((1,228*4))
 	for idx,event in enumerate(test_loader):
 		if gpu_boole:
 			event = event.cuda()
@@ -295,25 +321,36 @@ if test_model:
 
 	test_losses.append(test_loss_per_epoch/int(test.shape[0]))
 	print("Test Loss: %f"%(test_loss_per_epoch/int(test.shape[0])))
-	input_list = input_list[1:].reshape((2000,228,3))
+	input_list = input_list[1:].reshape((2000,228,4))
 	input_list[:,:,0] = (input_list[:,:,0] * px_std) + px_mean + px_min
 	input_list[:,:,1] = (input_list[:,:,1] * py_std) + py_mean + py_min
 	input_list[:,:,2] = (input_list[:,:,2] * pz_std) + pz_mean + pz_min
+	input_list[:,:,3] = (input_list[:,:,3] * E_std) + E_mean + E_min
 	phi = np.arctan(np.divide(input_list[:,:,1],input_list[:,:,0]))
-	pt = np.divide(input_list[:,:,1],np.sin(phi))
+	pt = np.abs(np.divide(input_list[:,:,1],np.sin(phi)))
 	eta = np.arcsinh(np.divide(input_list[:,:,2],pt))
+	input_list = np.zeros((2000,228,3))
 	input_list[:,:,0], input_list[:,:,1], input_list[:,:,2] = pt, eta, phi
-	input_list = input_list.reshape((2000,684))
+	input_list = input_list.reshape((2000,228*3))
+	print("Min max of eta, phi, pt in input (test): ")
+	print(np.amin(eta),np.amax(eta))
+	print(np.amin(phi),np.amax(phi))
+	print(np.amin(pt),np.amax(pt))	
 	
-	output_list = output_list[1:].reshape((2000,228,3))
+	output_list = output_list[1:].reshape((2000,228,4))
 	output_list[:,:,0] = (output_list[:,:,0] * px_std) + px_mean + px_min
 	output_list[:,:,1] = (output_list[:,:,1] * py_std) + py_mean + py_min
 	output_list[:,:,2] = (output_list[:,:,2] * pz_std) + pz_mean + pz_min	
 	phi = np.arctan(np.divide(output_list[:,:,1],output_list[:,:,0]))
-	pt = np.divide(output_list[:,:,1],np.sin(phi))
+	pt = np.abs(np.divide(output_list[:,:,1],np.sin(phi)))
 	eta = np.arcsinh(np.divide(output_list[:,:,2],pt))
+	output_list = np.zeros((2000,228,3))
 	output_list[:,:,0], output_list[:,:,1], output_list[:,:,2] = pt, eta, phi
 	output_list = output_list.reshape((2000,684))
+	print("Min max of eta, phi, pt in output (test): ")
+	print(np.amin(eta),np.amax(eta))
+	print(np.amin(phi),np.amax(phi))	
+	print(np.amin(pt),np.amax(pt))
 	'''
 	data = data_unnorm.reshape((1000000,228,3))
 	print(input_list.shape)
@@ -332,6 +369,7 @@ if test_model:
 	output_list[:,:,2] = output_list[:,:,2]*np.amax(data[:,:,2])
 	output_list = output_list.reshape((20,684))
 	'''
+	
 	np.savetxt("test_input_%s.txt"%(ending), input_list)
 	np.savetxt("test_output_%s.txt"%(ending), output_list)
 
