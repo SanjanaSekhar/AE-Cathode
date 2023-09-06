@@ -329,9 +329,10 @@ if test_model:
 	phi = np.arctan(np.divide(input_list[:,:,1],input_list[:,:,0]))
 	pt = np.abs(np.divide(input_list[:,:,1],np.sin(phi)))
 	eta = np.arcsinh(np.divide(input_list[:,:,2],pt))
-	input_list = np.zeros((2000,228,3))
-	input_list[:,:,0], input_list[:,:,1], input_list[:,:,2] = pt, eta, phi
-	input_list = input_list.reshape((2000,228*3))
+	input_list_2 = np.zeros((2000,228,3))
+	input_list_2[:,:,0],  input_list_2[:,:,1],  input_list_2[:,:,2] =  input_list[:,:,0], input_list[:,:,1],  input_list[:,:,3]
+	#input_list[:,:,0], input_list[:,:,1], input_list[:,:,2] = pt, eta, phi
+	input_list = input_list_2.reshape((2000,228*3))
 	print("Min max of eta, phi, pt in input (test): ")
 	print(np.amin(eta),np.amax(eta))
 	print(np.amin(phi),np.amax(phi))
@@ -344,9 +345,9 @@ if test_model:
 	phi = np.arctan(np.divide(output_list[:,:,1],output_list[:,:,0]))
 	pt = np.abs(np.divide(output_list[:,:,1],np.sin(phi)))
 	eta = np.arcsinh(np.divide(output_list[:,:,2],pt))
-	output_list = np.zeros((2000,228,3))
-	output_list[:,:,0], output_list[:,:,1], output_list[:,:,2] = pt, eta, phi
-	output_list = output_list.reshape((2000,684))
+	output_list_2 = np.zeros((2000,228,3))
+	output_list_2[:,:,0], output_list_2[:,:,1], output_list_2[:,:,2] = output_list[:,:,0], output_list[:,:,1],  output_list[:,:,3]
+	output_list = output_list_2.reshape((2000,684))
 	print("Min max of eta, phi, pt in output (test): ")
 	print(np.amin(eta),np.amax(eta))
 	print(np.amin(phi),np.amax(phi))	
