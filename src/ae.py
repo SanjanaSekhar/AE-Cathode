@@ -321,6 +321,7 @@ if test_model:
 	test_loss_per_epoch = 0.
 	input_list, output_list = np.zeros((1,228*3)), np.zeros((1,228*3))
 	for idx,event in enumerate(test_loader):
+		if idx==0: print(event.numpy())
 		if gpu_boole:
 			event = event.cuda()
 
@@ -337,13 +338,13 @@ if test_model:
 			#print("Loss for this input: ",test_loss.cpu().data.numpy().item())
 			input_list = np.vstack((input_list,(event.cpu().detach().numpy())))
 			output_list = np.vstack((output_list,(reconstructed.cpu().detach().numpy())))
-
+			if idx==0: print(event.cpu().detach().numpy())
 	test_losses.append(test_loss_per_epoch/int(test.shape[0]))
 	print("Test Loss: %f"%(test_loss_per_epoch/int(test.shape[0])))
 	input_list = input_list[1:].reshape((2000,228,3))
-	input_list[:,:,0] = (input_list[:,:,0] * px_std) + px_mean + px_min
-	input_list[:,:,1] = (input_list[:,:,1] * py_std) + py_mean + py_min
-	input_list[:,:,2] = (input_list[:,:,2] * pz_std) + pz_mean + pz_min
+	input_list[:,:,0] = (input_list[:,:,0] * px_std) + px_mean
+	input_list[:,:,1] = (input_list[:,:,1] * py_std) + py_mean
+	input_list[:,:,2] = (input_list[:,:,2] * pz_std) + pz_mean
 	#input_list[:,:,3] = (input_list[:,:,3] * E_std) + E_mean + E_min
 	phi = np.arctan(np.divide(input_list[:,:,1],input_list[:,:,0]))
 	pt = np.abs(np.divide(input_list[:,:,1],np.sin(phi)))
@@ -362,9 +363,9 @@ if test_model:
 	np.savetxt("test_input_ptetaphi_%s.txt"%(ending), input_list)
 
 	output_list = output_list[1:].reshape((2000,228,3))
-	output_list[:,:,0] = (output_list[:,:,0] * px_std) + px_mean + px_min
-	output_list[:,:,1] = (output_list[:,:,1] * py_std) + py_mean + py_min
-	output_list[:,:,2] = (output_list[:,:,2] * pz_std) + pz_mean + pz_min	
+	output_list[:,:,0] = (output_list[:,:,0] * px_std) + px_mean
+	output_list[:,:,1] = (output_list[:,:,1] * py_std) + py_mean
+	output_list[:,:,2] = (output_list[:,:,2] * pz_std) + pz_mean
 	phi = np.arctan(np.divide(output_list[:,:,1],output_list[:,:,0]))
 	pt = np.abs(np.divide(output_list[:,:,1],np.sin(phi)))
 	eta = np.arcsinh(np.divide(output_list[:,:,2],pt))
