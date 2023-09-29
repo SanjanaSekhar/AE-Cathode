@@ -5,3 +5,10 @@ build/
 *.csv
 *.pth
 .venv/
+HighFive-src/
+fastjet-3.4.2.tar.gz
+fastjet-3.4.2/
+fastjet-install/
+fjcontrib-1.052.tar.gz
+fjcontrib-1.052/
+hdf5-blosc/
