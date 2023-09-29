@@ -4,4 +4,4 @@ build/
 *.h5
 *.csv
 *.pth
-
+.venv/
