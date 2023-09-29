@@ -356,7 +356,11 @@ if test_model:
 	print(np.amin(eta),np.amax(eta))
 	print(np.amin(phi),np.amax(phi))
 	print(np.amin(pt),np.amax(pt))	
-	
+	np.savetxt("test_input_pxpypz_%s.txt"%(ending), input_list)
+	input_list_2[:,:,0],  input_list_2[:,:,1],  input_list_2[:,:,2] = pt,eta,phi
+	input_list = input_list_2.reshape((2000,228*3))
+	np.savetxt("test_input_ptetaphi_%s.txt"%(ending), input_list)
+
 	output_list = output_list[1:].reshape((2000,228,3))
 	output_list[:,:,0] = (output_list[:,:,0] * px_std) + px_mean + px_min
 	output_list[:,:,1] = (output_list[:,:,1] * py_std) + py_mean + py_min
@@ -371,6 +375,10 @@ if test_model:
 	print(np.amin(eta),np.amax(eta))
 	print(np.amin(phi),np.amax(phi))	
 	print(np.amin(pt),np.amax(pt))
+	np.savetxt("test_output_pxpypz_%s.txt"%(ending), output_list)
+	output_list_2[:,:,0], output_list_2[:,:,1], output_list_2[:,:,2] = pt,eta,phi
+	output_list = output_list_2.reshape((2000,684))
+	np.savetxt("test_output_ptetaphi_%s.txt"%(ending), output_list)
 	'''
 	data = data_unnorm.reshape((1000000,228,3))
 	print(input_list.shape)
@@ -388,9 +396,9 @@ if test_model:
 	output_list[:,:,1] = output_list[:,:,1]*np.amax(data[:,:,1])
 	output_list[:,:,2] = output_list[:,:,2]*np.amax(data[:,:,2])
 	output_list = output_list.reshape((20,684))
-	'''
 	
-	np.savetxt("test_input_%s.txt"%(ending), input_list)
-	np.savetxt("test_output_%s.txt"%(ending), output_list)
-
+	
+	np.savetxt("test_input_pxpypz_%s.txt"%(ending), input_list)
+	np.savetxt("test_output_pxpypz_%s.txt"%(ending), output_list)
+	'''
 
