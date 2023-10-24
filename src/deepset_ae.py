@@ -18,12 +18,13 @@ import h5py
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from pytorch3d.loss import chamfer_distance
+from fspool import FSPool
 
-ending = "100423"
+ending = "102323"
 load_model = True
-test_model = True
-early_stop = 5
-batch_size = 400
+test_model = False
+early_stop = 7
+batch_size = 500
 epochs = 300
 
 gpu_boole = torch.cuda.is_available()
@@ -53,13 +54,14 @@ logpt = np.zeros((1000000,228))
 logpt[pt!=0] = np.log10(pt[pt!=0])
 
 
-data[:,:,0] = eta/np.max(eta)
-data[:,:,1] = phi/np.max(phi)
-data[:,:,2] = logpt
-data = np.dstack(data, pid)
+data[:,:,1] = eta/np.max(eta)
+data[:,:,2] = phi/np.max(phi)
+data[:,:,0] = logpt
+data = np.dstack((data, pid))
 print("Data shape after stacking PID", data.shape)
-pid = np.vstack(pid, np.logical_not(pid).astype(int))
-
+pid = np.vstack((pid, np.logical_not(pid).astype(int)))
+data = np.swapaxes(data, 1, 2)
+print("Data shape after swapping axes", data.shape)
 train, validate, test = np.split(data, [int(.7*len(data)), int(.8*len(data))])
 
 train_set = torch.tensor(train, dtype=torch.float32)
@@ -98,13 +100,13 @@ class DeepSetAE(torch.nn.Module):
 		Mask away inputs and pool using FSPool
 		'''
 		self.create_deepset = torch.nn.Sequential(
-			torch.nn.Conv1d(4,128,1),
+			torch.nn.Conv1d(4,64,1),
 			torch.nn.ELU(),
-			torch.nn.Conv1d(128,256,1),
+			torch.nn.Conv1d(64,128,1),
 			torch.nn.ELU(),
-			torch.nn.Conv1d(256,128,1),
+			torch.nn.Conv1d(128,64,1),
 			torch.nn.ELU(),
-			torch.nn.Conv1d(128, 11-1, 1)) # 9 latent dimensions + 1 mask
+			torch.nn.Conv1d(64, 11-1, 1)) # 9 latent dimensions + 1 mask
 
 		self.pool = FSPool(11 -1, 20, relaxed=False) # second argument is no. of points needed to parametrize a piecewise linear function, can be arbit
 		
@@ -126,23 +128,26 @@ class DeepSetAE(torch.nn.Module):
 
 	def forward(self, x, mask):
 		encoded = self.create_deepset(x)
-		print("encoder o/p shape = ", encoded.shape)
-		encoded = torch.from_numpy(encoded.to_numpy() * mask[:,0]) # mask away invalid elements
+		#print("encoder o/p shape = ", encoded.shape, "mask.unsqueeze(1).shape = ",mask.unsqueeze(1).shape)
+		encoded = encoded * mask.unsqueeze(1) # mask away invalid elements
+		#print("encoder o/p shape after mask = ", encoded.shape)
 		pooled, _ = self.pool(encoded)
-		print("pooled o/p shape = ", pooled.shape)
-		pooled = torch.cat([pooled,mask],dim=1) # save mask to the representation
+		#print("pooled o/p shape = ", pooled.shape)
+		#print("pooled.mean = ",pooled.mean()," mask.mean(dim=1) = ",mask.mean(dim=1))
+		pooled = torch.cat([pooled,mask.unsqueeze(1).mean(dim=2)],dim=1) # save mask to the representation
+		#print("pooled shape after cat mask = ", pooled.shape)
 		decoded = self.decoder(pooled)
 		vec = self.regress_4vec(decoded)
 		vec = vec.view(vec.size(0), 3, 228) #return 4 vectors in (n_events, 4, 228) shape
 		mask = self.classif_mask(decoded)
-		mask = mask.view(mask.size(0), 1, 228)
+		mask = mask.view(mask.size(0), 228)
 		return vec, mask 
 
 model = DeepSetAE()
 if gpu_boole: model = model.cuda()
 
 optimizer = torch.optim.Adam(model.parameters(),
-        lr = 2e-3,
+        lr = 1e-3,
         weight_decay = 1e-8)
 
 BCE_loss = torch.nn.BCELoss()
@@ -191,7 +196,7 @@ if not test_model:
 	
 	for epoch in range(loaded_epoch,epochs):
 
-		loss_per_epoch, val_loss_per_epoch = 0,0
+		closs_per_epoch, bloss_per_epoch, loss_per_epoch, val_loss_per_epoch = 0,0,0,0
 		i = 0
 		with tqdm(train_loader, unit="batch") as tepoch:
 			model.train()
@@ -199,20 +204,21 @@ if not test_model:
 				tepoch.set_description(f"Epoch {epoch}")
 				if gpu_boole:
 					event = event.cuda()
-
-				event = torch.reshape(event, (batch_size,228,4))
-				event_vec = event[:,:,0:3]
-				event_mask = event[:,:,3]
+				#print(event.shape)
+				#event = torch.reshape(event, (batch_size,228,4))
+				event_vec = event[:,0:3,:]
+				event_mask = event[:,3,:]
 			  	# Output of Autoencoder
 				reconstructed_vec, reconstructed_mask = model.forward(event,event_mask)
 
 			  	# Calculating the loss function
 				
-				reconstructed_vec = torch.reshape(reconstructed_vec, (batch_size,228,3))
+				#reconstructed_vec = torch.reshape(reconstructed_vec, (batch_size,228,3))
 				#loss = loss_function(reconstructed, event)
 				chamfer_loss,_ = chamfer_distance(reconstructed_vec, event_vec)
 				bce_loss = BCE_loss(torch.sigmoid(reconstructed_mask), event_mask)
-			 	loss = alpha * chamfer_loss + (1-alpha) * bce_loss
+
+				loss = alpha * chamfer_loss + (1-alpha) * bce_loss
 				#if epoch > 0 and epoch != loaded_epoch:
 				optimizer.zero_grad()
 				loss.backward()
@@ -222,6 +228,8 @@ if not test_model:
 				#i+=1
 				#print("loss %i = "%i,loss)
 				#print("loss.cpu().data.numpy().item() = ",loss.cpu().data.numpy().item())
+				closs_per_epoch += (chamfer_loss.cpu().data.numpy().item())/batch_size
+				bloss_per_epoch += (bce_loss.cpu().data.numpy().item())/batch_size
 				loss_per_epoch += loss.cpu().data.numpy().item()
 				sleep(0.1)
 		
@@ -234,7 +242,7 @@ if not test_model:
 			},
 			"checkpoints/deepsetAE_epoch%i_%s.pth"%(epoch%5,ending))
 		losses.append(this_loss)
-		print("Train Loss: %f"%(this_loss))
+		print("Chamfer Loss = %f, BCE Loss = %f, Train Loss: %f"%(closs_per_epoch,bloss_per_epoch,this_loss))
 		
 		# VALIDATION
 
@@ -244,16 +252,16 @@ if not test_model:
 				event = event.cuda()
 			
 			# Output of Autoencoder
-			event = torch.reshape(event, (batch_size,228,4))
-			event_vec = event[:,:,0:3]
-			event_mask = event[:,:,3]
+			#event = torch.reshape(event, (batch_size,228,4))
+			event_vec = event[:,0:3,:]
+			event_mask = event[:,3,:]
 			reconstructed_vec, reconstructed_mask = model.forward(event, event_mask)
 			
-			reconstructed_vec = torch.reshape(reconstructed_vec, (batch_size,228,3))
+			#reconstructed_vec = torch.reshape(reconstructed_vec, (batch_size,228,3))
 			#loss = loss_function(reconstructed, event)
 			chamfer_loss,_ = chamfer_distance(reconstructed_vec, event_vec)
 			bce_loss = BCE_loss(torch.sigmoid(reconstructed_mask), event_mask)
-		 	val_loss = alpha * chamfer_loss + (1-alpha) * bce_loss
+			val_loss = alpha * chamfer_loss + (1-alpha) * bce_loss
 			
 			val_loss_per_epoch += val_loss.cpu().data.numpy().item()
 
@@ -264,7 +272,7 @@ if not test_model:
 		flag = 0
 		if early_stop > 0 and epoch > loaded_epoch + early_stop:
 			for e in range(early_stop):
-				if val_losses[-e] > val_losses[-e-1]: flag += 1
+				if val_losses[-e] > val_losses[-early_stop]: flag += 1
 			if flag == early_stop:
 				print("STOPPING TRAINING EARLY, VAL LOSS HAS BEEN INCREASING FOR THE LAST %i EPOCHS"%early_stop)
 				break
@@ -279,40 +287,45 @@ if not test_model:
 if test_model:
 
 	test_loss_per_epoch = 0.
-	input_list, output_list = np.zeros((1,228*3)), np.zeros((1,228*3))
+	input_list, output_list = np.zeros((1,3,228)), np.zeros((1,3,228))
 	for idx,event in enumerate(test_loader):
 		if idx==0: print(event.numpy())
 		if gpu_boole:
 			event = event.cuda()
 
 	  	# Output of Autoencoder
-	  	event = torch.reshape(event, (batch_size,228,4))
-		event_vec = event[:,:,0:3]
-		event_mask  = event[:,:,3]
+		#event = torch.reshape(event, (batch_size,228,4))
+		event_vec = event[:,0:3,:]
+		event_mask  = event[:,3,:]
 		reconstructed_vec, reconstructed_mask = model.forward(event, event_mask)
 		
-		reconstructed_vec = torch.reshape(reconstructed_vec, (1,228,3))
+		#reconstructed_vec = torch.reshape(reconstructed_vec, (1,228,3))
 		#loss = loss_function(reconstructed, event)
 		chamfer_loss,_ = chamfer_distance(reconstructed_vec, event_vec)
 		bce_loss = BCE_loss(torch.sigmoid(reconstructed_mask), event_mask)
-	 	test_loss = alpha * chamfer_loss + (1-alpha) * bce_loss
+		test_loss = alpha * chamfer_loss + (1-alpha) * bce_loss
 		test_loss_per_epoch += test_loss.cpu().data.numpy().item()
 		if idx < 2000:
-			event_vec = torch.reshape(event_vec, (1,228*3))
-			reconstructed_vec = torch.reshape(reconstructed_vec, (228,3))	
-			reconstructed_mask = torch.reshape(reconstructed_mask,(228,1))
-			reconstructed_vec = reconstructed_vec * reconstructed_mask
-			reconstructed_vec = torch.reshape(reconstructed_vec, (1,228*3))		
+			#event_vec = torch.reshape(event_vec, (1,228*3))
+			#reconstructed_vec = torch.reshape(reconstructed_vec, (228,3))	
+			#reconstructed_mask = torch.reshape(reconstructed_mask,(228,1))
+			reconstructed_vec = reconstructed_vec * torch.sigmoid(reconstructed_mask.unsqueeze(1))
+			#reconstructed_vec = torch.reshape(reconstructed_vec, (1,3,228))		
 			#print("Loss for this input: ",test_loss.cpu().data.numpy().item())
-			input_list = np.vstack((input_list,(event.cpu().detach().numpy())))
-			output_list = np.vstack((output_list,(reconstructed.cpu().detach().numpy())))
+			input_list = np.vstack((input_list,(event_vec.cpu().detach().numpy())))
+			output_list = np.vstack((output_list,(reconstructed_vec.cpu().detach().numpy())))
 			if idx==0: print(event.cpu().detach().numpy())
 	
 	test_losses.append(test_loss_per_epoch/int(test.shape[0]))
 	print("Test Loss: %f"%(test_loss_per_epoch/int(test.shape[0])))
-	
+	print(input_list.shape)
+	#input_list = np.swapaxes(input_list,1,2)
+	input_list[:,:,0], input_list[:,:,1], input_list[:,:,2] = (10**input_list[:,:,0]), input_list[:,:,1]*np.max(eta), input_list[:,:,2]*np.max(phi)	
+	input_list = input_list.reshape((2001,228*3))
 	np.savetxt("deepset_test_input_ptetaphi_%s.txt"%(ending), input_list[1:])
-
+	#output_list = np.swapaxes(output_list,1,2)
+	output_list[:,:,0], output_list[:,:,1], output_list[:,:,2] = (10**output_list[:,:,0]), output_list[:,:,1]*np.max(eta), output_list[:,:,2]*np.max(phi)
+	output_list = output_list.reshape((2001,228*3))
 	np.savetxt("deepset_test_output_ptetaphi_%s.txt"%(ending), output_list[1:])
 	
 

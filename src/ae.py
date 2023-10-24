@@ -45,6 +45,10 @@ data_unnorm = np.copy(data)
 eta = data[:,:,0]
 phi = data[:,:,1]
 pt = data[:,:,2]
+#print(pt.shape, pt[pt==0].shape)
+#print("No. of empty particles on average: ", [len(x[x==0]) for x in pt])
+pid = np.asarray([(np.array(p) != 0).astype(int) for p in pt])
+print("PID: ",pid.shape,pid) 
 transformed = np.zeros((1000000,228,3))
 
 print("Min max of eta, phi, pt before any transformations: ")
