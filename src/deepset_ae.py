@@ -21,11 +21,11 @@ from pytorch3d.loss import chamfer_distance
 from fspool import FSPool
 
 ending = "102323"
-load_model = True
+load_model = False
 test_model = False
 early_stop = 7
-batch_size = 500
-epochs = 300
+batch_size = 628
+epochs = 50
 
 gpu_boole = torch.cuda.is_available()
 print("Is GPU available? ",gpu_boole)
@@ -152,11 +152,12 @@ optimizer = torch.optim.Adam(model.parameters(),
 
 BCE_loss = torch.nn.BCELoss()
 alpha = 0.5
+alpha_list = [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9]
 #loss_function = chamfer_distance()
 
 # LOAD AN EXISTING MODEL 
 if load_model:
-	checkpoint = torch.load("checkpoints/deepsetAE_epoch2_%s.pth"%(ending))
+	checkpoint = torch.load("checkpoints/deepset_epoch2_%s.pth"%(ending))
 	model.load_state_dict(checkpoint['model_state_dict'])
 	optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 	loaded_epoch = checkpoint['epoch']
@@ -165,7 +166,7 @@ if load_model:
 	#print("loaded loss = ",loss_function)
 	train_val_losses = []
 	
-	with open("losses/deepsetAE_train_val_losses_%s.txt"%ending,"r") as f:
+	with open("losses/deepset_alpha%.1f_train_val_losses_%s.txt"%(alpha,ending),"r") as f:
 		for line in f:
 			train_val_losses.append(line.split(' '))
 	train_val_losses = np.array(train_val_losses).astype("float32")
@@ -193,95 +194,95 @@ test_losses = []
 # TRAINING & VALIDATION LOOP
 
 if not test_model:
-	
-	for epoch in range(loaded_epoch,epochs):
+	for alpha in alpha_list:
+		for epoch in range(loaded_epoch,epochs):
 
-		closs_per_epoch, bloss_per_epoch, loss_per_epoch, val_loss_per_epoch = 0,0,0,0
-		i = 0
-		with tqdm(train_loader, unit="batch") as tepoch:
-			model.train()
-			for event in tepoch:
-				tepoch.set_description(f"Epoch {epoch}")
+			closs_per_epoch, bloss_per_epoch, loss_per_epoch, val_loss_per_epoch = 0,0,0,0
+			i = 0
+			with tqdm(train_loader, unit="batch") as tepoch:
+				model.train()
+				for event in tepoch:
+					tepoch.set_description(f"Epoch {epoch}")
+					if gpu_boole:
+						event = event.cuda()
+					#print(event.shape)
+					#event = torch.reshape(event, (batch_size,228,4))
+					event_vec = event[:,0:3,:]
+					event_mask = event[:,3,:]
+				  	# Output of Autoencoder
+					reconstructed_vec, reconstructed_mask = model.forward(event,event_mask)
+
+				  	# Calculating the loss function
+					
+					#reconstructed_vec = torch.reshape(reconstructed_vec, (batch_size,228,3))
+					#loss = loss_function(reconstructed, event)
+					chamfer_loss,_ = chamfer_distance(reconstructed_vec, event_vec)
+					bce_loss = BCE_loss(torch.sigmoid(reconstructed_mask), event_mask)
+
+					loss = alpha * chamfer_loss + (1-alpha) * bce_loss
+					#if epoch > 0 and epoch != loaded_epoch:
+					optimizer.zero_grad()
+					loss.backward()
+					optimizer.step()
+
+				 	 # Adding up all losses in a batch
+					#i+=1
+					#print("loss %i = "%i,loss)
+					#print("loss.cpu().data.numpy().item() = ",loss.cpu().data.numpy().item())
+					closs_per_epoch += (chamfer_loss.cpu().data.numpy().item())/batch_size
+					bloss_per_epoch += (bce_loss.cpu().data.numpy().item())/batch_size
+					loss_per_epoch += loss.cpu().data.numpy().item()
+					sleep(0.1)
+			
+			this_loss = loss_per_epoch/math.ceil(train.shape[0]/batch_size)
+			torch.save({
+				'epoch':epoch,
+				'model_state_dict': model.state_dict(),
+		            	'optimizer_state_dict': optimizer.state_dict(),
+		            	'loss': loss
+				},
+				"checkpoints/deepset_alpha%.1f_epoch%i_%s.pth"%(alpha,epoch%5,ending))
+			losses.append(this_loss)
+			print("Chamfer Loss = %f, BCE Loss = %f, Train Loss: %f"%(closs_per_epoch,bloss_per_epoch,this_loss))
+			
+			# VALIDATION
+
+			for event in val_loader:
+				model.eval()
 				if gpu_boole:
 					event = event.cuda()
-				#print(event.shape)
+				
+				# Output of Autoencoder
 				#event = torch.reshape(event, (batch_size,228,4))
 				event_vec = event[:,0:3,:]
 				event_mask = event[:,3,:]
-			  	# Output of Autoencoder
-				reconstructed_vec, reconstructed_mask = model.forward(event,event_mask)
-
-			  	# Calculating the loss function
+				reconstructed_vec, reconstructed_mask = model.forward(event, event_mask)
 				
 				#reconstructed_vec = torch.reshape(reconstructed_vec, (batch_size,228,3))
 				#loss = loss_function(reconstructed, event)
 				chamfer_loss,_ = chamfer_distance(reconstructed_vec, event_vec)
 				bce_loss = BCE_loss(torch.sigmoid(reconstructed_mask), event_mask)
+				val_loss = alpha * chamfer_loss + (1-alpha) * bce_loss
+				
+				val_loss_per_epoch += val_loss.cpu().data.numpy().item()
 
-				loss = alpha * chamfer_loss + (1-alpha) * bce_loss
-				#if epoch > 0 and epoch != loaded_epoch:
-				optimizer.zero_grad()
-				loss.backward()
-				optimizer.step()
-
-			 	 # Adding up all losses in a batch
-				#i+=1
-				#print("loss %i = "%i,loss)
-				#print("loss.cpu().data.numpy().item() = ",loss.cpu().data.numpy().item())
-				closs_per_epoch += (chamfer_loss.cpu().data.numpy().item())/batch_size
-				bloss_per_epoch += (bce_loss.cpu().data.numpy().item())/batch_size
-				loss_per_epoch += loss.cpu().data.numpy().item()
-				sleep(0.1)
-		
-		this_loss = loss_per_epoch/math.ceil(train.shape[0]/batch_size)
-		torch.save({
-			'epoch':epoch,
-			'model_state_dict': model.state_dict(),
-	            	'optimizer_state_dict': optimizer.state_dict(),
-	            	'loss': loss
-			},
-			"checkpoints/deepsetAE_epoch%i_%s.pth"%(epoch%5,ending))
-		losses.append(this_loss)
-		print("Chamfer Loss = %f, BCE Loss = %f, Train Loss: %f"%(closs_per_epoch,bloss_per_epoch,this_loss))
-		
-		# VALIDATION
-
-		for event in val_loader:
-			model.eval()
-			if gpu_boole:
-				event = event.cuda()
+			val_losses.append(val_loss_per_epoch/math.ceil(validate.shape[0]/batch_size))
+			print("Val Loss: %f"%(val_loss_per_epoch/math.ceil(validate.shape[0]/batch_size)))
 			
-			# Output of Autoencoder
-			#event = torch.reshape(event, (batch_size,228,4))
-			event_vec = event[:,0:3,:]
-			event_mask = event[:,3,:]
-			reconstructed_vec, reconstructed_mask = model.forward(event, event_mask)
-			
-			#reconstructed_vec = torch.reshape(reconstructed_vec, (batch_size,228,3))
-			#loss = loss_function(reconstructed, event)
-			chamfer_loss,_ = chamfer_distance(reconstructed_vec, event_vec)
-			bce_loss = BCE_loss(torch.sigmoid(reconstructed_mask), event_mask)
-			val_loss = alpha * chamfer_loss + (1-alpha) * bce_loss
-			
-			val_loss_per_epoch += val_loss.cpu().data.numpy().item()
+			# EARLY STOPPING
+			flag = 0
+			if early_stop > 0 and epoch > loaded_epoch + early_stop:
+				for e in range(early_stop):
+					if val_losses[-e] > val_losses[-early_stop]: flag += 1
+				if flag == early_stop:
+					print("STOPPING TRAINING EARLY, VAL LOSS HAS BEEN INCREASING FOR THE LAST %i EPOCHS"%early_stop)
+					break
 
-		val_losses.append(val_loss_per_epoch/math.ceil(validate.shape[0]/batch_size))
-		print("Val Loss: %f"%(val_loss_per_epoch/math.ceil(validate.shape[0]/batch_size)))
-		
-		# EARLY STOPPING
-		flag = 0
-		if early_stop > 0 and epoch > loaded_epoch + early_stop:
-			for e in range(early_stop):
-				if val_losses[-e] > val_losses[-early_stop]: flag += 1
-			if flag == early_stop:
-				print("STOPPING TRAINING EARLY, VAL LOSS HAS BEEN INCREASING FOR THE LAST %i EPOCHS"%early_stop)
-				break
+			with open("losses/deepset_alpha%.1f_train_val_losses_%s.txt"%(alpha,ending),"w") as f:
+				for loss, val_loss in zip(losses, val_losses):
+					f.write(str(loss)+" "+str(val_loss)+"\n")
 
-		with open("losses/train_val_losses_%s.txt"%ending,"w") as f:
-			for loss, val_loss in zip(losses, val_losses):
-				f.write(str(loss)+" "+str(val_loss)+"\n")
-
-	print("========== TRAINING COMPLETE ===========")
+		print("========== TRAINING COMPLETE for alpha = %.f ==========="%alpha)
 
 # TESTING
 if test_model:
