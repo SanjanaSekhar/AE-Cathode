@@ -20,11 +20,11 @@ from sklearn.model_selection import train_test_split
 from pytorch3d.loss import chamfer_distance
 from fspool import FSPool
 
-ending = "102323"
+ending = "102623"
 load_model = False
 test_model = False
-early_stop = 7
-batch_size = 628
+early_stop = 5
+batch_size = 500
 epochs = 50
 
 gpu_boole = torch.cuda.is_available()
@@ -100,13 +100,13 @@ class DeepSetAE(torch.nn.Module):
 		Mask away inputs and pool using FSPool
 		'''
 		self.create_deepset = torch.nn.Sequential(
-			torch.nn.Conv1d(4,64,1),
-			torch.nn.ELU(),
-			torch.nn.Conv1d(64,128,1),
-			torch.nn.ELU(),
-			torch.nn.Conv1d(128,64,1),
-			torch.nn.ELU(),
-			torch.nn.Conv1d(64, 11-1, 1)) # 9 latent dimensions + 1 mask
+			torch.nn.Conv1d(4,100,1),
+			torch.nn.ReLU(),
+			torch.nn.Conv1d(100,200,1),
+			torch.nn.ReLU(),
+			torch.nn.Conv1d(200,100,1),
+			torch.nn.ReLU(),
+			torch.nn.Conv1d(100, 11-1, 1)) # 9 latent dimensions + 1 mask
 
 		self.pool = FSPool(11 -1, 20, relaxed=False) # second argument is no. of points needed to parametrize a piecewise linear function, can be arbit
 		
@@ -114,13 +114,13 @@ class DeepSetAE(torch.nn.Module):
 		# DECODER
 		self.decoder = torch.nn.Sequential(
 			torch.nn.Linear(11, 100),
-			torch.nn.ELU(),
+			torch.nn.ReLU(),
 			torch.nn.Linear(100, 200),
-			torch.nn.ELU(),
+			torch.nn.ReLU(),
 			torch.nn.Linear(200, 400),
-			torch.nn.ELU(),
+			torch.nn.ReLU(),
                         torch.nn.Linear(400, 600),
-                        torch.nn.ELU(),
+                        torch.nn.ReLU(),
                         )
 		self.regress_4vec = torch.nn.Linear(600, 228*3) # 4 vectors of 228 particles
 		self.classif_mask = torch.nn.Linear(600, 228*1) # mask choice of 0 or 1 for 228 particles
@@ -147,17 +147,19 @@ model = DeepSetAE()
 if gpu_boole: model = model.cuda()
 
 optimizer = torch.optim.Adam(model.parameters(),
-        lr = 1e-3,
+        lr = 2e-4,
         weight_decay = 1e-8)
 
 BCE_loss = torch.nn.BCELoss()
-alpha = 0.5
-alpha_list = [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9]
+alpha = 0.9
+epoch = 25 
+alpha_list = [0.9]
+#alpha_list = np.linspace(0.0,0.1,10)
 #loss_function = chamfer_distance()
 
 # LOAD AN EXISTING MODEL 
 if load_model:
-	checkpoint = torch.load("checkpoints/deepset_epoch2_%s.pth"%(ending))
+	checkpoint = torch.load("checkpoints/deepset_alpha%.2f_epoch%i_%s.pth"%(alpha,epoch,ending))
 	model.load_state_dict(checkpoint['model_state_dict'])
 	optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 	loaded_epoch = checkpoint['epoch']
@@ -165,7 +167,9 @@ if load_model:
 	#loss_function = checkpoint['loss']
 	#print("loaded loss = ",loss_function)
 	train_val_losses = []
-	
+	scale_c = checkpoint['scale_c']
+	scale_b = checkpoint['scale_b']
+
 	with open("losses/deepset_alpha%.1f_train_val_losses_%s.txt"%(alpha,ending),"r") as f:
 		for line in f:
 			train_val_losses.append(line.split(' '))
@@ -195,6 +199,8 @@ test_losses = []
 
 if not test_model:
 	for alpha in alpha_list:
+		if not load_model: losses,val_losses = [],[]	
+		best_train_loss, best_val_loss = 1e7,1e7
 		for epoch in range(loaded_epoch,epochs):
 
 			closs_per_epoch, bloss_per_epoch, loss_per_epoch, val_loss_per_epoch = 0,0,0,0
@@ -218,8 +224,8 @@ if not test_model:
 					#loss = loss_function(reconstructed, event)
 					chamfer_loss,_ = chamfer_distance(reconstructed_vec, event_vec)
 					bce_loss = BCE_loss(torch.sigmoid(reconstructed_mask), event_mask)
-
-					loss = alpha * chamfer_loss + (1-alpha) * bce_loss
+					if epoch == 0: scale_c, scale_b = chamfer_loss.cpu().data.numpy().item(), bce_loss.cpu().data.numpy().item()
+					loss = alpha * (chamfer_loss/scale_c) + (1-alpha) * (bce_loss/scale_b)
 					#if epoch > 0 and epoch != loaded_epoch:
 					optimizer.zero_grad()
 					loss.backward()
@@ -235,13 +241,6 @@ if not test_model:
 					sleep(0.1)
 			
 			this_loss = loss_per_epoch/math.ceil(train.shape[0]/batch_size)
-			torch.save({
-				'epoch':epoch,
-				'model_state_dict': model.state_dict(),
-		            	'optimizer_state_dict': optimizer.state_dict(),
-		            	'loss': loss
-				},
-				"checkpoints/deepset_alpha%.1f_epoch%i_%s.pth"%(alpha,epoch%5,ending))
 			losses.append(this_loss)
 			print("Chamfer Loss = %f, BCE Loss = %f, Train Loss: %f"%(closs_per_epoch,bloss_per_epoch,this_loss))
 			
@@ -262,27 +261,39 @@ if not test_model:
 				#loss = loss_function(reconstructed, event)
 				chamfer_loss,_ = chamfer_distance(reconstructed_vec, event_vec)
 				bce_loss = BCE_loss(torch.sigmoid(reconstructed_mask), event_mask)
-				val_loss = alpha * chamfer_loss + (1-alpha) * bce_loss
+				val_loss = alpha * (chamfer_loss/scale_c) + (1-alpha) * (bce_loss/scale_b)
 				
 				val_loss_per_epoch += val_loss.cpu().data.numpy().item()
 
 			val_losses.append(val_loss_per_epoch/math.ceil(validate.shape[0]/batch_size))
 			print("Val Loss: %f"%(val_loss_per_epoch/math.ceil(validate.shape[0]/batch_size)))
 			
+			# SAVE BEST MODEL
+			if this_loss < best_train_loss and val_losses[-1] < best_val_loss:
+				best_train_loss, best_val_loss = this_loss, val_losses[-1]
+				torch.save({
+					'epoch':epoch,
+					'model_state_dict': model.state_dict(),
+					'optimizer_state_dict': optimizer.state_dict(),
+					'loss': loss,
+					'scale_c': scale_c,
+					'scale_b': scale_b
+					},
+					"checkpoints/deepset_alpha%.2f_epoch%i_%s.pth"%(alpha,epoch,ending))
 			# EARLY STOPPING
 			flag = 0
 			if early_stop > 0 and epoch > loaded_epoch + early_stop:
-				for e in range(early_stop):
+				for e in range(1,early_stop+1):
 					if val_losses[-e] > val_losses[-early_stop]: flag += 1
 				if flag == early_stop:
 					print("STOPPING TRAINING EARLY, VAL LOSS HAS BEEN INCREASING FOR THE LAST %i EPOCHS"%early_stop)
 					break
 
-			with open("losses/deepset_alpha%.1f_train_val_losses_%s.txt"%(alpha,ending),"w") as f:
+			with open("losses/deepset_alpha%.2f_train_val_losses_%s.txt"%(alpha,ending),"w") as f:
 				for loss, val_loss in zip(losses, val_losses):
 					f.write(str(loss)+" "+str(val_loss)+"\n")
 
-		print("========== TRAINING COMPLETE for alpha = %.f ==========="%alpha)
+		print("========== TRAINING COMPLETE for alpha = %.2f ==========="%alpha)
 
 # TESTING
 if test_model:
