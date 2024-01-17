@@ -11,7 +11,7 @@ from mpl_toolkits.mplot3d import Axes3D
 import pandas as pd
 
 
-ending = "092823_chamfer"
+ending = "102623"
 
 
 
@@ -91,7 +91,7 @@ def plot_3D(input, output, label, type = 'px'):
         ax[0,1].legend([out_proxy],['AE output event'])
         ax[1,0].legend([in_proxy,out_proxy],['input event','AE output event'])
         ax[1,1].legend([in_proxy,out_proxy],['input event','AE output event'])
-        plt.savefig("plots/AE_io_%s_pxpypz.png"%label)
+        plt.savefig("plots/ddepsetAE_io_%s_ptetaphi.png"%label)
         plt.close()
 	
 
@@ -107,7 +107,7 @@ val_losses = train_val_losses[:,1].tolist()
 
 plot_ae_loss(losses,val_losses)
 
-input_list = np.loadtxt("test_input_%s.txt"%(ending))[:,:684]
-output_list = np.loadtxt("test_output_%s.txt"%(ending))[:,:684]
+input_list = np.loadtxt("deepset_test_input_ptetaphi_%s.txt"%(ending))[:,:684]
+output_list = np.loadtxt("deepset_test_output_ptetaphi_%s.txt"%(ending))[:,:684]
 for i in range(10):
-	plot_3D(input_list[i], output_list[i], ending+'_%i'%i)
+	plot_3D(input_list[i], output_list[i], ending+'_%i'%i, type='pT')

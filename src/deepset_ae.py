@@ -21,8 +21,8 @@ from pytorch3d.loss import chamfer_distance
 from fspool import FSPool
 
 ending = "102623"
-load_model = False
-test_model = False
+load_model = True
+test_model = True
 early_stop = 5
 batch_size = 500
 epochs = 50
@@ -152,7 +152,7 @@ optimizer = torch.optim.Adam(model.parameters(),
 
 BCE_loss = torch.nn.BCELoss()
 alpha = 0.9
-epoch = 25 
+epoch = 46 
 alpha_list = [0.9]
 #alpha_list = np.linspace(0.0,0.1,10)
 #loss_function = chamfer_distance()
@@ -170,7 +170,7 @@ if load_model:
 	scale_c = checkpoint['scale_c']
 	scale_b = checkpoint['scale_b']
 
-	with open("losses/deepset_alpha%.1f_train_val_losses_%s.txt"%(alpha,ending),"r") as f:
+	with open("losses/deepset_alpha%.2f_train_val_losses_%s.txt"%(alpha,ending),"r") as f:
 		for line in f:
 			train_val_losses.append(line.split(' '))
 	train_val_losses = np.array(train_val_losses).astype("float32")
@@ -299,9 +299,9 @@ if not test_model:
 if test_model:
 
 	test_loss_per_epoch = 0.
-	input_list, output_list = np.zeros((1,3,228)), np.zeros((1,3,228))
+	input_list, output_list = np.zeros((1,4,228)), np.zeros((1,4,228))
 	for idx,event in enumerate(test_loader):
-		if idx==0: print(event.numpy())
+		#if idx==0: print(event.numpy())
 		if gpu_boole:
 			event = event.cuda()
 
@@ -310,34 +310,43 @@ if test_model:
 		event_vec = event[:,0:3,:]
 		event_mask  = event[:,3,:]
 		reconstructed_vec, reconstructed_mask = model.forward(event, event_mask)
-		
 		#reconstructed_vec = torch.reshape(reconstructed_vec, (1,228,3))
 		#loss = loss_function(reconstructed, event)
 		chamfer_loss,_ = chamfer_distance(reconstructed_vec, event_vec)
 		bce_loss = BCE_loss(torch.sigmoid(reconstructed_mask), event_mask)
-		test_loss = alpha * chamfer_loss + (1-alpha) * bce_loss
+		test_loss = alpha * (chamfer_loss/scale_c) + (1-alpha) * (bce_loss/scale_b)
 		test_loss_per_epoch += test_loss.cpu().data.numpy().item()
 		if idx < 2000:
+			reconstructed_mask = reconstructed_mask.unsqueeze(1)
+			reconstructed = torch.cat([reconstructed_vec,reconstructed_mask],dim=1)
+			#print(reconstructed_vec.shape, reconstructed_mask.shape, reconstructed.shape)
 			#event_vec = torch.reshape(event_vec, (1,228*3))
 			#reconstructed_vec = torch.reshape(reconstructed_vec, (228,3))	
 			#reconstructed_mask = torch.reshape(reconstructed_mask,(228,1))
-			reconstructed_vec = reconstructed_vec * torch.sigmoid(reconstructed_mask.unsqueeze(1))
+			#reconstructed_vec = reconstructed_vec * torch.sigmoid(reconstructed_mask.unsqueeze(1))
 			#reconstructed_vec = torch.reshape(reconstructed_vec, (1,3,228))		
 			#print("Loss for this input: ",test_loss.cpu().data.numpy().item())
-			input_list = np.vstack((input_list,(event_vec.cpu().detach().numpy())))
-			output_list = np.vstack((output_list,(reconstructed_vec.cpu().detach().numpy())))
-			if idx==0: print(event.cpu().detach().numpy())
+			input_list = np.vstack((input_list,(event.cpu().detach().numpy())))
+			output_list = np.vstack((output_list,(reconstructed.cpu().detach().numpy())))
+			#if idx==0: print(event.cpu().detach().numpy())
 	
 	test_losses.append(test_loss_per_epoch/int(test.shape[0]))
 	print("Test Loss: %f"%(test_loss_per_epoch/int(test.shape[0])))
 	print(input_list.shape)
-	#input_list = np.swapaxes(input_list,1,2)
-	input_list[:,:,0], input_list[:,:,1], input_list[:,:,2] = (10**input_list[:,:,0]), input_list[:,:,1]*np.max(eta), input_list[:,:,2]*np.max(phi)	
-	input_list = input_list.reshape((2001,228*3))
+	print((input_list[:,0,:]!=0).shape)
+	pt = input_list[:,0,:] 
+	pt[pt!=0] = 10**pt[pt!=0]
+	#input_list[input_list[:,0,:]!=0] = 10**input_list[input_list[:,0,:]!=0]
+	input_list[:,0,:], input_list[:,1,:], input_list[:,2,:], input_list[:,3,:] = pt, input_list[:,1,:]*np.max(eta), input_list[:,2,:]*np.max(phi), input_list[:,3,:]	
+	input_list = input_list.reshape((2001,228*4))
 	np.savetxt("deepset_test_input_ptetaphi_%s.txt"%(ending), input_list[1:])
 	#output_list = np.swapaxes(output_list,1,2)
-	output_list[:,:,0], output_list[:,:,1], output_list[:,:,2] = (10**output_list[:,:,0]), output_list[:,:,1]*np.max(eta), output_list[:,:,2]*np.max(phi)
-	output_list = output_list.reshape((2001,228*3))
+	pt = output_list[:,0,:]
+	pt[pt!=0] = 10**pt[pt!=0]
+	#output_list[:,output_list[:,0,:]!=0,:] = 10**output_list[:,output_list[:,0,:]!=0,:]
+	output_list[:,0,:], output_list[:,1,:], output_list[:,2,:], output_list[:,3,:] = pt, output_list[:,1,:]*np.max(eta), output_list[:,2,:]*np.max(phi), output_list[:,3,:]
+	
+	output_list = output_list.reshape((2001,228*4))
 	np.savetxt("deepset_test_output_ptetaphi_%s.txt"%(ending), output_list[1:])
 	
 
