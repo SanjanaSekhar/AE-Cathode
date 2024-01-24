@@ -20,12 +20,12 @@ from sklearn.model_selection import train_test_split
 from pytorch3d.loss import chamfer_distance
 from fspool import FSPool
 
-ending = "102623"
-load_model = True
-test_model = True
+ending = "012324"
+load_model = False
+test_model = False
 early_stop = 5
-batch_size = 500
-epochs = 50
+batch_size = 628
+epochs = 20
 
 gpu_boole = torch.cuda.is_available()
 print("Is GPU available? ",gpu_boole)
@@ -39,10 +39,12 @@ data = data.to_numpy()[:,:684]
 
 data = data.reshape((1000000,228,3))
 data_unnorm = np.copy(data)
-eta = data[:,:,0]
-phi = data[:,:,1]
-pt = data[:,:,2]
-
+eta = np.copy(data[:,:,0])
+phi = np.copy(data[:,:,1])
+pt = np.copy(data[:,:,2])
+print(eta.shape, eta[0])
+print(phi.shape, phi[0])
+print(pt.shape, pt[0])
 # Add PID : 0 for zero pt particles, 1 otherwise
 pid = np.asarray([(np.array(p) != 0).astype(int) for p in pt])
 #pid = np.vstack(pid, np.logical_not(pid).astype(int))
@@ -54,15 +56,21 @@ logpt = np.zeros((1000000,228))
 logpt[pt!=0] = np.log10(pt[pt!=0])
 
 
-data[:,:,1] = eta/np.max(eta)
-data[:,:,2] = phi/np.max(phi)
-data[:,:,0] = logpt
+data[:,:,1] = np.copy(eta/np.max(eta))
+data[:,:,2] = np.copy(phi/np.max(phi))
+data[:,:,0] = np.copy(pt/np.max(pt))
+
 data = np.dstack((data, pid))
 print("Data shape after stacking PID", data.shape)
 pid = np.vstack((pid, np.logical_not(pid).astype(int)))
+print("\n",data[0,0,0],"\n",data[0,1,0],"\n",data[0,2,0],"\n",data[0,3,0])
 data = np.swapaxes(data, 1, 2)
 print("Data shape after swapping axes", data.shape)
 train, validate, test = np.split(data, [int(.7*len(data)), int(.8*len(data))])
+
+
+print("\n",data[0,0,0],"\n",data[0,1,0],"\n",data[0,2,0],"\n",data[0,3,0])
+
 
 train_set = torch.tensor(train, dtype=torch.float32)
 val_set = torch.tensor(validate, dtype=torch.float32)
@@ -100,31 +108,35 @@ class DeepSetAE(torch.nn.Module):
 		Mask away inputs and pool using FSPool
 		'''
 		self.create_deepset = torch.nn.Sequential(
-			torch.nn.Conv1d(4,100,1),
-			torch.nn.ReLU(),
-			torch.nn.Conv1d(100,200,1),
-			torch.nn.ReLU(),
-			torch.nn.Conv1d(200,100,1),
-			torch.nn.ReLU(),
-			torch.nn.Conv1d(100, 11-1, 1)) # 9 latent dimensions + 1 mask
+			torch.nn.Conv1d(4,50,1),
+			torch.nn.ELU(),
+			torch.nn.Conv1d(50,100,1),
+			torch.nn.ELU(),
+			torch.nn.Conv1d(100,50,1),
+			torch.nn.ELU(),
+			torch.nn.Conv1d(50, 11-1, 1)) # 9 latent dimensions + 1 mask
 
-		self.pool = FSPool(11 -1, 20, relaxed=False) # second argument is no. of points needed to parametrize a piecewise linear function, can be arbit
+		self.pool = FSPool(11 -1, 30, relaxed=False) # second argument is no. of points needed to parametrize a piecewise linear function, can be arbit
 		
 
 		# DECODER
 		self.decoder = torch.nn.Sequential(
 			torch.nn.Linear(11, 100),
-			torch.nn.ReLU(),
-			torch.nn.Linear(100, 200),
-			torch.nn.ReLU(),
-			torch.nn.Linear(200, 400),
-			torch.nn.ReLU(),
-                        torch.nn.Linear(400, 600),
-                        torch.nn.ReLU(),
+			torch.nn.ELU(),
+			torch.nn.Linear(100, 400),
+			torch.nn.ELU(),
+			torch.nn.Linear(400, 700),
+			torch.nn.ELU(),
+                        torch.nn.Linear(700, 1000),
+                        torch.nn.ELU(),
+			#torch.nn.Linear(400, 500),
+			#torch.nn.ReLU(),
+			#torch.nn.Linear(500, 600),
+			#torch.nn.ReLU(),
                         )
-		self.regress_4vec = torch.nn.Linear(600, 228*3) # 4 vectors of 228 particles
-		self.classif_mask = torch.nn.Linear(600, 228*1) # mask choice of 0 or 1 for 228 particles
-                        
+		self.regress_4vec = torch.nn.Linear(1000, 228*3) # 4 vectors of 228 particles
+		self.classif = torch.nn.Linear(1000, 228*1) # mask choice of 0 or 1 for 228 particles
+		self.mask_out = torch.nn.Sigmoid()        
 
 	def forward(self, x, mask):
 		encoded = self.create_deepset(x)
@@ -139,21 +151,21 @@ class DeepSetAE(torch.nn.Module):
 		decoded = self.decoder(pooled)
 		vec = self.regress_4vec(decoded)
 		vec = vec.view(vec.size(0), 3, 228) #return 4 vectors in (n_events, 4, 228) shape
-		mask = self.classif_mask(decoded)
+		mask = self.mask_out(self.classif(decoded))
 		mask = mask.view(mask.size(0), 228)
 		return vec, mask 
 
 model = DeepSetAE()
 if gpu_boole: model = model.cuda()
 
-optimizer = torch.optim.Adam(model.parameters(),
-        lr = 2e-4,
-        weight_decay = 1e-8)
+optimizer = torch.optim.Adamax(model.parameters(),
+        lr = 1e-2,
+        weight_decay = 1e-6)
 
 BCE_loss = torch.nn.BCELoss()
-alpha = 0.9
+alpha = 0.85
 epoch = 46 
-alpha_list = [0.9]
+alpha_list = [0.75]
 #alpha_list = np.linspace(0.0,0.1,10)
 #loss_function = chamfer_distance()
 
@@ -223,7 +235,7 @@ if not test_model:
 					#reconstructed_vec = torch.reshape(reconstructed_vec, (batch_size,228,3))
 					#loss = loss_function(reconstructed, event)
 					chamfer_loss,_ = chamfer_distance(reconstructed_vec, event_vec)
-					bce_loss = BCE_loss(torch.sigmoid(reconstructed_mask), event_mask)
+					bce_loss = BCE_loss(reconstructed_mask, event_mask)
 					if epoch == 0: scale_c, scale_b = chamfer_loss.cpu().data.numpy().item(), bce_loss.cpu().data.numpy().item()
 					loss = alpha * (chamfer_loss/scale_c) + (1-alpha) * (bce_loss/scale_b)
 					#if epoch > 0 and epoch != loaded_epoch:
@@ -260,7 +272,7 @@ if not test_model:
 				#reconstructed_vec = torch.reshape(reconstructed_vec, (batch_size,228,3))
 				#loss = loss_function(reconstructed, event)
 				chamfer_loss,_ = chamfer_distance(reconstructed_vec, event_vec)
-				bce_loss = BCE_loss(torch.sigmoid(reconstructed_mask), event_mask)
+				bce_loss = BCE_loss(reconstructed_mask, event_mask)
 				val_loss = alpha * (chamfer_loss/scale_c) + (1-alpha) * (bce_loss/scale_b)
 				
 				val_loss_per_epoch += val_loss.cpu().data.numpy().item()
@@ -313,7 +325,7 @@ if test_model:
 		#reconstructed_vec = torch.reshape(reconstructed_vec, (1,228,3))
 		#loss = loss_function(reconstructed, event)
 		chamfer_loss,_ = chamfer_distance(reconstructed_vec, event_vec)
-		bce_loss = BCE_loss(torch.sigmoid(reconstructed_mask), event_mask)
+		bce_loss = BCE_loss(reconstructed_mask, event_mask)
 		test_loss = alpha * (chamfer_loss/scale_c) + (1-alpha) * (bce_loss/scale_b)
 		test_loss_per_epoch += test_loss.cpu().data.numpy().item()
 		if idx < 2000:
