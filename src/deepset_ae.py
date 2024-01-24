@@ -21,8 +21,8 @@ from pytorch3d.loss import chamfer_distance
 from fspool import FSPool
 
 ending = "012324"
-load_model = False
-test_model = False
+load_model = True
+test_model = True
 early_stop = 5
 batch_size = 628
 epochs = 20
@@ -163,8 +163,8 @@ optimizer = torch.optim.Adamax(model.parameters(),
         weight_decay = 1e-6)
 
 BCE_loss = torch.nn.BCELoss()
-alpha = 0.85
-epoch = 46 
+alpha = 0.75
+epoch = 16
 alpha_list = [0.75]
 #alpha_list = np.linspace(0.0,0.1,10)
 #loss_function = chamfer_distance()
@@ -346,17 +346,17 @@ if test_model:
 	print("Test Loss: %f"%(test_loss_per_epoch/int(test.shape[0])))
 	print(input_list.shape)
 	print((input_list[:,0,:]!=0).shape)
-	pt = input_list[:,0,:] 
-	pt[pt!=0] = 10**pt[pt!=0]
+	#pt = input_list[:,0,:] 
+	#pt[pt!=0] = 10**pt[pt!=0]
 	#input_list[input_list[:,0,:]!=0] = 10**input_list[input_list[:,0,:]!=0]
-	input_list[:,0,:], input_list[:,1,:], input_list[:,2,:], input_list[:,3,:] = pt, input_list[:,1,:]*np.max(eta), input_list[:,2,:]*np.max(phi), input_list[:,3,:]	
+	input_list[:,0,:], input_list[:,1,:], input_list[:,2,:], input_list[:,3,:] = np.copy(input_list[:,0,:]*np.amax(pt)), np.copy(input_list[:,1,:]*np.max(eta)), np.copy(input_list[:,2,:]*np.max(phi)), np.copy(input_list[:,3,:])	
 	input_list = input_list.reshape((2001,228*4))
 	np.savetxt("deepset_test_input_ptetaphi_%s.txt"%(ending), input_list[1:])
 	#output_list = np.swapaxes(output_list,1,2)
-	pt = output_list[:,0,:]
-	pt[pt!=0] = 10**pt[pt!=0]
+	#pt = output_list[:,0,:]
+	#pt[pt!=0] = 10**pt[pt!=0]
 	#output_list[:,output_list[:,0,:]!=0,:] = 10**output_list[:,output_list[:,0,:]!=0,:]
-	output_list[:,0,:], output_list[:,1,:], output_list[:,2,:], output_list[:,3,:] = pt, output_list[:,1,:]*np.max(eta), output_list[:,2,:]*np.max(phi), output_list[:,3,:]
+	output_list[:,0,:], output_list[:,1,:], output_list[:,2,:], output_list[:,3,:] = np.copy(output_list[:,0,:]*np.amax(pt)), np.copy(output_list[:,1,:]*np.max(eta)), np.copy(output_list[:,2,:]*np.max(phi)), np.copy(output_list[:,3,:])
 	
 	output_list = output_list.reshape((2001,228*4))
 	np.savetxt("deepset_test_output_ptetaphi_%s.txt"%(ending), output_list[1:])
