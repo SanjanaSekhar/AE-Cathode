@@ -20,12 +20,12 @@ from sklearn.model_selection import train_test_split
 from pytorch3d.loss import chamfer_distance
 from fspool import FSPool
 
-ending = "012324"
+ending = "012524"
 load_model = True
 test_model = True
 early_stop = 5
 batch_size = 628
-epochs = 20
+epochs = 50
 
 gpu_boole = torch.cuda.is_available()
 print("Is GPU available? ",gpu_boole)
@@ -168,7 +168,7 @@ optimizer = torch.optim.Adamax(model.parameters(),
 
 BCE_loss = torch.nn.BCELoss()
 alpha = 0.75
-epoch = 16
+epoch = 39
 alpha_list = [0.75]
 #alpha_list = np.linspace(0.0,0.1,10)
 #loss_function = chamfer_distance()
@@ -285,13 +285,15 @@ if not test_model:
 			print("Val Loss: %f"%(val_loss_per_epoch/math.ceil(validate.shape[0]/batch_size)))
 			
 			# SAVE BEST MODEL
-			if this_loss < best_train_loss and val_losses[-1] < best_val_loss:
+			if this_loss < best_train_loss:
 				best_train_loss, best_val_loss = this_loss, val_losses[-1]
 				torch.save({
 					'epoch':epoch,
 					'model_state_dict': model.state_dict(),
 					'optimizer_state_dict': optimizer.state_dict(),
-					'loss': loss,
+					'chamfer_loss': closs_per_epoch,
+					'BCE_loss': bloss_per_epoch,
+					'loss': this_loss,
 					'scale_c': scale_c,
 					'scale_b': scale_b
 					},
