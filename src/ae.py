@@ -18,7 +18,7 @@ import h5py
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from pytorch3d.loss import chamfer_distance
-ending = "092823_chamfer"
+ending = "012924_chamfer"
 load_model = True
 test_model = True
 early_stop = 5
@@ -42,9 +42,9 @@ data = data.to_numpy()[:,:684]
 
 data = data.reshape((1000000,228,3))
 data_unnorm = np.copy(data)
-eta = data[:,:,0]
-phi = data[:,:,1]
-pt = data[:,:,2]
+eta = np.copy(data[:,:,0])
+phi = np.copy(data[:,:,1])
+pt = np.copy(data[:,:,2])
 #print(pt.shape, pt[pt==0].shape)
 #print("No. of empty particles on average: ", [len(x[x==0]) for x in pt])
 pid = np.asarray([(np.array(p) != 0).astype(int) for p in pt])
@@ -55,10 +55,10 @@ print("Min max of eta, phi, pt before any transformations: ")
 print(np.amin(eta),np.amax(eta))
 print(np.amin(phi),np.amax(phi))
 print(np.amin(pt),np.amax(pt))
-px = np.multiply(pt,np.cos(phi))
-py = np.multiply(pt,np.sin(phi))
-pz = np.multiply(pt,np.sinh(eta))
-E = np.multiply(pt,np.cosh(eta))
+px = np.copy(np.multiply(pt,np.cos(phi)))
+py = np.copy(np.multiply(pt,np.sin(phi)))
+pz = np.copy(np.multiply(pt,np.sinh(eta)))
+E = np.copy(np.multiply(pt,np.cosh(eta)))
 # shift range to 0->max
 px_min, py_min, pz_min, E_min =  np.amin(px),np.amin(py),np.amin(pz),np.amin(E)
 #px -= np.amin(px)
@@ -73,10 +73,10 @@ print(np.amin(E), np.amax(E), np.mean(E))
 #standard scaling
 px_mean, py_mean, pz_mean, E_mean = np.mean(px), np.mean(py), np.mean(pz), np.mean(E) #note that this is the mean after shifting the range
 px_std, py_std, pz_std, E_std = np.std(px), np.std(py), np.std(pz), np.std(E)
-px_scaled = (px - np.mean(px))/np.std(px)
-py_scaled = (py - np.mean(py))/np.std(py)
-pz_scaled = (pz - np.mean(pz))/np.std(pz)
-E_scaled = (E - np.mean(E))/np.std(E)
+px_scaled = np.copy((px - np.mean(px))/np.std(px))
+py_scaled = np.copy((py - np.mean(py))/np.std(py))
+pz_scaled = np.copy((pz - np.mean(pz))/np.std(pz))
+E_scaled = np.copy((E - np.mean(E))/np.std(E))
 '''
 px_norm = px/np.amax(px)
 py_norm = py/np.amax(py)
@@ -107,9 +107,9 @@ data[:,:,2] = [np.zeros((159,)) if 0.0==phi_max[i] else data[i,:,2]/phi_max[i] f
 '''
 del pt,eta,phi
 gc.collect()
-transformed[:,:,0] = px_scaled
-transformed[:,:,1] = py_scaled
-transformed[:,:,2] = pz_scaled
+transformed[:,:,0] = np.copy(px_scaled)
+transformed[:,:,1] = np.copy(py_scaled)
+transformed[:,:,2] = np.copy(pz_scaled)
 #transformed[:,:,3] = E_scaled
 #print(pt_max[:30],eta_max[:30],phi_max[:30])
 #data = data.reshape((1000000,684))
@@ -204,7 +204,7 @@ optimizer = torch.optim.Adam(model.parameters(),
 
 # LOAD AN EXISTING MODEL 
 if load_model:
-	checkpoint = torch.load("checkpoints/ae_epoch2_%s.pth"%(ending))
+	checkpoint = torch.load("checkpoints/ae_epoch3_%s.pth"%(ending))
 	model.load_state_dict(checkpoint['model_state_dict'])
 	optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 	loaded_epoch = checkpoint['epoch']
@@ -346,15 +346,15 @@ if test_model:
 	test_losses.append(test_loss_per_epoch/int(test.shape[0]))
 	print("Test Loss: %f"%(test_loss_per_epoch/int(test.shape[0])))
 	input_list = input_list[1:].reshape((2000,228,3))
-	input_list[:,:,0] = (input_list[:,:,0] * px_std) + px_mean
-	input_list[:,:,1] = (input_list[:,:,1] * py_std) + py_mean
-	input_list[:,:,2] = (input_list[:,:,2] * pz_std) + pz_mean
+	input_list[:,:,0] = np.copy((input_list[:,:,0] * px_std) + px_mean)
+	input_list[:,:,1] = np.copy((input_list[:,:,1] * py_std) + py_mean)
+	input_list[:,:,2] = np.copy((input_list[:,:,2] * pz_std) + pz_mean)
 	#input_list[:,:,3] = (input_list[:,:,3] * E_std) + E_mean + E_min
-	phi = np.arctan(np.divide(input_list[:,:,1],input_list[:,:,0]))
-	pt = np.abs(np.divide(input_list[:,:,1],np.sin(phi)))
-	eta = np.arcsinh(np.divide(input_list[:,:,2],pt))
+	phi = np.copy(np.arctan(np.divide(input_list[:,:,1],input_list[:,:,0])))
+	pt = np.copy(np.abs(np.divide(input_list[:,:,1],np.sin(phi))))
+	eta = np.copy(np.arcsinh(np.divide(input_list[:,:,2],pt)))
 	input_list_2 = np.zeros((2000,228,3))
-	input_list_2[:,:,0],  input_list_2[:,:,1],  input_list_2[:,:,2] =  input_list[:,:,0], input_list[:,:,1],  input_list[:,:,2]
+	input_list_2[:,:,0],  input_list_2[:,:,1],  input_list_2[:,:,2] =  np.copy(input_list[:,:,0]), np.copy(input_list[:,:,1]),  np.copy(input_list[:,:,2])
 	#input_list[:,:,0], input_list[:,:,1], input_list[:,:,2] = pt, eta, phi
 	input_list = input_list_2.reshape((2000,228*3))
 	print("Min max of eta, phi, pt in input (test): ")
@@ -362,26 +362,26 @@ if test_model:
 	print(np.amin(phi),np.amax(phi))
 	print(np.amin(pt),np.amax(pt))	
 	np.savetxt("test_input_pxpypz_%s.txt"%(ending), input_list)
-	input_list_2[:,:,0],  input_list_2[:,:,1],  input_list_2[:,:,2] = pt,eta,phi
+	input_list_2[:,:,0],  input_list_2[:,:,1],  input_list_2[:,:,2] = np.copy(pt),np.copy(eta),np.copy(phi)
 	input_list = input_list_2.reshape((2000,228*3))
 	np.savetxt("test_input_ptetaphi_%s.txt"%(ending), input_list)
 
 	output_list = output_list[1:].reshape((2000,228,3))
-	output_list[:,:,0] = (output_list[:,:,0] * px_std) + px_mean
-	output_list[:,:,1] = (output_list[:,:,1] * py_std) + py_mean
-	output_list[:,:,2] = (output_list[:,:,2] * pz_std) + pz_mean
-	phi = np.arctan(np.divide(output_list[:,:,1],output_list[:,:,0]))
-	pt = np.abs(np.divide(output_list[:,:,1],np.sin(phi)))
-	eta = np.arcsinh(np.divide(output_list[:,:,2],pt))
+	output_list[:,:,0] = np.copy((output_list[:,:,0] * px_std) + px_mean)
+	output_list[:,:,1] = np.copy((output_list[:,:,1] * py_std) + py_mean)
+	output_list[:,:,2] = np.copy((output_list[:,:,2] * pz_std) + pz_mean)
+	phi = np.copy(np.arctan(np.divide(output_list[:,:,1],output_list[:,:,0])))
+	pt = np.copy(np.abs(np.divide(output_list[:,:,1],np.sin(phi))))
+	eta = np.copy(np.arcsinh(np.divide(output_list[:,:,2],pt)))
 	output_list_2 = np.zeros((2000,228,3))
-	output_list_2[:,:,0], output_list_2[:,:,1], output_list_2[:,:,2] = output_list[:,:,0], output_list[:,:,1],  output_list[:,:,2]
+	output_list_2[:,:,0], output_list_2[:,:,1], output_list_2[:,:,2] = np.copy(output_list[:,:,0]), np.copy(output_list[:,:,1]),  np.copy(output_list[:,:,2])
 	output_list = output_list_2.reshape((2000,684))
 	print("Min max of eta, phi, pt in output (test): ")
 	print(np.amin(eta),np.amax(eta))
 	print(np.amin(phi),np.amax(phi))	
 	print(np.amin(pt),np.amax(pt))
 	np.savetxt("test_output_pxpypz_%s.txt"%(ending), output_list)
-	output_list_2[:,:,0], output_list_2[:,:,1], output_list_2[:,:,2] = pt,eta,phi
+	output_list_2[:,:,0], output_list_2[:,:,1], output_list_2[:,:,2] = np.copy(pt),np.copy(eta),np.copy(phi)
 	output_list = output_list_2.reshape((2000,684))
 	np.savetxt("test_output_ptetaphi_%s.txt"%(ending), output_list)
 	'''

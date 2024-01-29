@@ -357,7 +357,7 @@ if test_model:
 	#input_list[input_list[:,0,:]!=0] = 10**input_list[input_list[:,0,:]!=0]
 	input_list[:,0,:] = np.copy(input_list[:,0,:]*np.amax(pt))
 	input_list[:,3,:] = np.copy(np.round(input_list[:,3,:]))
-	input_list[:,0,:], input_list[:,1,:], input_list[:,2,:], input_list[:,3,:] = np.copy(np.multiply(input_list[:,0,:],input_list[:,3,:])), np.copy(np.multiply(input_list[:,1,:],input_list[:,3,:])), np.copy(np.multiply(input_list[:,2,:],input_list[:,3,:])), np.copy(input_list[:,3,:])	
+	input_list[:,0,:], input_list[:,1,:], input_list[:,2,:], input_list[:,3,:] = np.copy(np.multiply(input_list[:,0,:],input_list[:,3,:])), np.copy(np.multiply(input_list[:,1,:],input_list[:,3,:])*np.max(eta)), np.copy(np.multiply(input_list[:,2,:],input_list[:,3,:])*np.max(phi)), np.copy(input_list[:,3,:])	
 	input_list = input_list.reshape((2001,228*4))
 	np.savetxt("deepset_test_input_ptetaphi_%s.txt"%(ending), input_list[1:])
 	#output_list = np.swapaxes(output_list,1,2)
@@ -366,7 +366,7 @@ if test_model:
 	#output_list[:,output_list[:,0,:]!=0,:] = 10**output_list[:,output_list[:,0,:]!=0,:]
 	output_list[:,0,:] = np.copy(output_list[:,0,:]*np.amax(pt))
 	output_list[:,3,:] = np.copy(np.round(output_list[:,3,:]))
-	output_list[:,0,:], output_list[:,1,:], output_list[:,2,:], output_list[:,3,:] = np.copy(np.multiply(output_list[:,0,:],output_list[:,3,:])),  np.copy(np.multiply(output_list[:,1,:],output_list[:,3,:])),  np.copy(np.multiply(output_list[:,2,:],output_list[:,3,:])), np.copy(output_list[:,3,:])
+	output_list[:,0,:], output_list[:,1,:], output_list[:,2,:], output_list[:,3,:] = np.copy(np.multiply(output_list[:,0,:],output_list[:,3,:])),  np.copy(np.multiply(output_list[:,1,:],output_list[:,3,:])*np.max(eta)),  np.copy(np.multiply(output_list[:,2,:],output_list[:,3,:])*np.max(phi)), np.copy(output_list[:,3,:])
 	
 	output_list = output_list.reshape((2001,228*4))
 	np.savetxt("deepset_test_output_ptetaphi_%s.txt"%(ending), output_list[1:])
