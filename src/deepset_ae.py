@@ -20,12 +20,12 @@ from sklearn.model_selection import train_test_split
 from pytorch3d.loss import chamfer_distance
 from fspool import FSPool
 
-ending = "021324"
+ending = "021524"
 load_model = True
 test_model = True
 early_stop = 5
 batch_size = 628
-epochs = 1
+epochs = 100
 n_events = 1000000
 
 gpu_boole = torch.cuda.is_available()
@@ -62,14 +62,15 @@ print("phi range: ", np.min(phi),np.max(phi))
 
 eta_min, eta_max = np.min(eta),np.max(eta)
 
-data[:,:,1] = np.copy((eta-eta_min)/(-eta_min+eta_max))
+data[:,:,1] = np.copy(np.multiply((eta-eta_min)/(-eta_min+eta_max),pid))
 #data[:,:,1] = np.copy(data[:,:,1]/np.max(data[:,:,1]))
-data[:,:,2] = np.copy(phi/np.max(phi))
+data[:,:,2] = np.copy(np.multiply(phi/np.max(phi),pid))
 data[:,:,0] = np.copy(pt/np.max(pt))
 
 print("pt range: ", np.min(data[:,:,0]),np.max(data[:,:,0]))
 print("eta range after shifting to +ve: ", np.min(data[:,:,1]),np.max(data[:,:,1]))
 print("phi range: ", np.min(data[:,:,2]),np.max(data[:,:,2]))
+
 '''
 data[:,:,1] = np.copy(eta)
 data[:,:,2] = np.copy(phi)
@@ -182,9 +183,9 @@ optimizer = torch.optim.Adam(model.parameters(),
         weight_decay = 1e-6)
 
 BCE_loss = torch.nn.BCELoss()
-alpha = 0.8
-epoch = 47
-alpha_list = [0.8]
+alpha = 0.9
+epoch = 98
+alpha_list = [0.9]
 #alpha_list = np.linspace(0.0,0.1,10)
 #loss_function = chamfer_distance()
 
@@ -372,8 +373,8 @@ if test_model:
 	
 	input_list[:,3,:] = np.copy(np.round(input_list[:,3,:]))
 	input_list[:,0,:] = np.copy(np.multiply(input_list[:,0,:],input_list[:,3,:])*np.amax(pt))
-	input_list[:,1,:] = np.copy(input_list[:,1,:]*(-eta_min+eta_max) + eta_min)
-	input_list[:,2,:] = np.copy(input_list[:,2,:]*np.max(phi))	
+	input_list[:,1,:] = np.copy(np.multiply(input_list[:,1,:]*(-eta_min+eta_max),input_list[:,3,:]) + eta_min)
+	input_list[:,2,:] = np.copy(np.multiply(input_list[:,2,:],input_list[:,3,:])*np.max(phi))	
 	
 	input_list = input_list.reshape((2001,228*4))
 	np.savetxt("deepset_test_input_ptetaphi_%s.txt"%(ending), input_list[1:])
@@ -383,8 +384,8 @@ if test_model:
 
 	output_list[:,3,:] = np.copy(np.round(output_list[:,3,:]))
 	output_list[:,0,:] = np.copy(np.multiply(output_list[:,0,:],output_list[:,3,:])*np.amax(pt))
-	output_list[:,1,:] = np.copy(output_list[:,1,:]*(-eta_min+eta_max) + eta_min)
-	output_list[:,2,:] = np.copy(output_list[:,2,:]*np.max(phi))
+	output_list[:,1,:] = np.copy(np.multiply(output_list[:,1,:]*(-eta_min+eta_max),output_list[:,3,:]) + eta_min)
+	output_list[:,2,:] = np.copy(np.multiply(output_list[:,2,:],output_list[:,3,:])*np.max(phi))
 
 		
 	output_list = output_list.reshape((2001,228*4))
