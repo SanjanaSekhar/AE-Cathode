@@ -20,12 +20,13 @@ from sklearn.model_selection import train_test_split
 from pytorch3d.loss import chamfer_distance
 from fspool import FSPool
 
-ending = "012524"
+ending = "021324"
 load_model = True
 test_model = True
 early_stop = 5
 batch_size = 628
-epochs = 50
+epochs = 1
+n_events = 1000000
 
 gpu_boole = torch.cuda.is_available()
 print("Is GPU available? ",gpu_boole)
@@ -33,11 +34,11 @@ if load_model: print("Loading model... ")
 
 #data = pd.read_csv("events_rotated.csv", header=None,usecols=np.arange(0,684))
 #print(data.head())
-data = pd.read_hdf("events_LHCO2020_BlackBox1_preprocessed_rotated.h5",stop=1000000)
+data = pd.read_hdf("events_LHCO2020_BlackBox1_preprocessed_rotated.h5",stop=n_events)
 data = data.to_numpy()[:,:684]
 
 
-data = data.reshape((1000000,228,3))
+data = data.reshape((n_events,228,3))
 data_unnorm = np.copy(data)
 eta = np.copy(data[:,:,0])
 phi = np.copy(data[:,:,1])
@@ -48,17 +49,27 @@ print(pt.shape, pt[0])
 # Add PID : 0 for zero pt particles, 1 otherwise
 pid = np.asarray([(np.array(p) != 0).astype(int) for p in pt])
 #pid = np.vstack(pid, np.logical_not(pid).astype(int))
-print("PID shape: ",pid.shape) 
+print(pid.shape,pid[0]) 
 
 
 # take log10 of pt
-logpt = np.zeros((1000000,228))
+logpt = np.zeros((n_events,228))
 logpt[pt!=0] = np.log10(pt[pt!=0])
 
+print("pt range: ", np.min(pt),np.max(pt))
+print("eta range: ", np.min(eta),np.max(eta))
+print("phi range: ", np.min(phi),np.max(phi))
 
-data[:,:,1] = np.copy(eta/np.max(eta))
+eta_min, eta_max = np.min(eta),np.max(eta)
+
+data[:,:,1] = np.copy((eta-eta_min)/(-eta_min+eta_max))
+#data[:,:,1] = np.copy(data[:,:,1]/np.max(data[:,:,1]))
 data[:,:,2] = np.copy(phi/np.max(phi))
 data[:,:,0] = np.copy(pt/np.max(pt))
+
+print("pt range: ", np.min(data[:,:,0]),np.max(data[:,:,0]))
+print("eta range after shifting to +ve: ", np.min(data[:,:,1]),np.max(data[:,:,1]))
+print("phi range: ", np.min(data[:,:,2]),np.max(data[:,:,2]))
 '''
 data[:,:,1] = np.copy(eta)
 data[:,:,2] = np.copy(phi)
@@ -66,15 +77,17 @@ data[:,:,0] = np.copy(pt)
 '''
 data = np.dstack((data, pid))
 print("Data shape after stacking PID", data.shape)
-pid = np.vstack((pid, np.logical_not(pid).astype(int)))
+#pid = np.vstack((pid, np.logical_not(pid).astype(int)))
+
 print("\n",data[0,0,0],"\n",data[0,1,0],"\n",data[0,2,0],"\n",data[0,3,0])
+
 data = np.swapaxes(data, 1, 2)
+
 print("Data shape after swapping axes", data.shape)
+
 train, validate, test = np.split(data, [int(.7*len(data)), int(.8*len(data))])
 
-
 print("\n",data[0,0,0],"\n",data[0,1,0],"\n",data[0,2,0],"\n",data[0,3,0])
-
 
 train_set = torch.tensor(train, dtype=torch.float32)
 val_set = torch.tensor(validate, dtype=torch.float32)
@@ -112,41 +125,43 @@ class DeepSetAE(torch.nn.Module):
 		Mask away inputs and pool using FSPool
 		'''
 		self.create_deepset = torch.nn.Sequential(
-			torch.nn.Conv1d(4,50,1),
-			torch.nn.ELU(),
-			torch.nn.Conv1d(50,100,1),
-			torch.nn.ELU(),
-			torch.nn.Conv1d(100,50,1),
-			torch.nn.ELU(),
-			torch.nn.Conv1d(50, 11-1, 1)) # 9 latent dimensions + 1 mask
+			torch.nn.Conv1d(4,100,1),
+			torch.nn.ReLU(),
+			torch.nn.Conv1d(100,200,1),
+			torch.nn.ReLU(),
+			#torch.nn.Conv1d(200,200,1),
+			#torch.nn.ReLU(),
+			torch.nn.Conv1d(200,100,1),
+			torch.nn.ReLU(),
+			torch.nn.Conv1d(100, 11-1, 1)) # 9 latent dimensions + 1 mask
 
 		self.pool = FSPool(11 -1, 30, relaxed=False) # second argument is no. of points needed to parametrize a piecewise linear function, can be arbit
 		
 
 		# DECODER
 		self.decoder = torch.nn.Sequential(
-			torch.nn.Linear(11, 100),
-			torch.nn.ELU(),
-			torch.nn.Linear(100, 400),
-			torch.nn.ELU(),
-			torch.nn.Linear(400, 700),
-			torch.nn.ELU(),
-                        torch.nn.Linear(700, 1000),
-                        torch.nn.ELU(),
-			#torch.nn.Linear(400, 500),
+			torch.nn.Linear(11, 200),
+			torch.nn.ReLU(),
+			torch.nn.Linear(200, 500),
+			torch.nn.ReLU(),
+			#torch.nn.Linear(300, 600),
 			#torch.nn.ReLU(),
+                        torch.nn.Linear(500, 900),
+                        torch.nn.ReLU(),
+			torch.nn.Linear(900, 1200),
+			torch.nn.ReLU(),
 			#torch.nn.Linear(500, 600),
 			#torch.nn.ReLU(),
                         )
-		self.regress_4vec = torch.nn.Linear(1000, 228*3) # 4 vectors of 228 particles
-		self.classif = torch.nn.Linear(1000, 228*1) # mask choice of 0 or 1 for 228 particles
+		self.regress_4vec = torch.nn.Linear(1200, 228*3) # 4 vectors of 228 particles
+		self.classif = torch.nn.Linear(1200, 228*1) # mask choice of 0 or 1 for 228 particles
 		self.mask_out = torch.nn.Sigmoid()        
 
 	def forward(self, x, mask):
 		encoded = self.create_deepset(x)
-		#print("encoder o/p shape = ", encoded.shape, "mask.unsqueeze(1).shape = ",mask.unsqueeze(1).shape)
+		#print("encoder o/p shape = ", encoded.shape, "mask.unsqueeze(1).shape = ",mask.unsqueeze(1).shape, encoded[0],mask[0])
 		encoded = encoded * mask.unsqueeze(1) # mask away invalid elements
-		#print("encoder o/p shape after mask = ", encoded.shape)
+		#print("encoder o/p shape after mask = ", encoded.shape, encoded[0])
 		pooled, _ = self.pool(encoded)
 		#print("pooled o/p shape = ", pooled.shape)
 		#print("pooled.mean = ",pooled.mean()," mask.mean(dim=1) = ",mask.mean(dim=1))
@@ -162,14 +177,14 @@ class DeepSetAE(torch.nn.Module):
 model = DeepSetAE()
 if gpu_boole: model = model.cuda()
 
-optimizer = torch.optim.Adamax(model.parameters(),
-        lr = 1e-2,
+optimizer = torch.optim.Adam(model.parameters(),
+        lr = 1e-3,
         weight_decay = 1e-6)
 
 BCE_loss = torch.nn.BCELoss()
-alpha = 0.75
-epoch = 39
-alpha_list = [0.75]
+alpha = 0.8
+epoch = 47
+alpha_list = [0.8]
 #alpha_list = np.linspace(0.0,0.1,10)
 #loss_function = chamfer_distance()
 
@@ -354,20 +369,24 @@ if test_model:
 	print((input_list[:,0,:]!=0).shape)
 	#pt = input_list[:,0,:] 
 	#pt[pt!=0] = 10**pt[pt!=0]
-	#input_list[input_list[:,0,:]!=0] = 10**input_list[input_list[:,0,:]!=0]
-	input_list[:,0,:] = np.copy(input_list[:,0,:]*np.amax(pt))
+	
 	input_list[:,3,:] = np.copy(np.round(input_list[:,3,:]))
-	input_list[:,0,:], input_list[:,1,:], input_list[:,2,:], input_list[:,3,:] = np.copy(np.multiply(input_list[:,0,:],input_list[:,3,:])), np.copy(np.multiply(input_list[:,1,:],input_list[:,3,:])*np.max(eta)), np.copy(np.multiply(input_list[:,2,:],input_list[:,3,:])*np.max(phi)), np.copy(input_list[:,3,:])	
+	input_list[:,0,:] = np.copy(np.multiply(input_list[:,0,:],input_list[:,3,:])*np.amax(pt))
+	input_list[:,1,:] = np.copy(input_list[:,1,:]*(-eta_min+eta_max) + eta_min)
+	input_list[:,2,:] = np.copy(input_list[:,2,:]*np.max(phi))	
+	
 	input_list = input_list.reshape((2001,228*4))
 	np.savetxt("deepset_test_input_ptetaphi_%s.txt"%(ending), input_list[1:])
 	#output_list = np.swapaxes(output_list,1,2)
 	#pt = output_list[:,0,:]
 	#pt[pt!=0] = 10**pt[pt!=0]
-	#output_list[:,output_list[:,0,:]!=0,:] = 10**output_list[:,output_list[:,0,:]!=0,:]
-	output_list[:,0,:] = np.copy(output_list[:,0,:]*np.amax(pt))
+
 	output_list[:,3,:] = np.copy(np.round(output_list[:,3,:]))
-	output_list[:,0,:], output_list[:,1,:], output_list[:,2,:], output_list[:,3,:] = np.copy(np.multiply(output_list[:,0,:],output_list[:,3,:])),  np.copy(np.multiply(output_list[:,1,:],output_list[:,3,:])*np.max(eta)),  np.copy(np.multiply(output_list[:,2,:],output_list[:,3,:])*np.max(phi)), np.copy(output_list[:,3,:])
-	
+	output_list[:,0,:] = np.copy(np.multiply(output_list[:,0,:],output_list[:,3,:])*np.amax(pt))
+	output_list[:,1,:] = np.copy(output_list[:,1,:]*(-eta_min+eta_max) + eta_min)
+	output_list[:,2,:] = np.copy(output_list[:,2,:]*np.max(phi))
+
+		
 	output_list = output_list.reshape((2001,228*4))
 	np.savetxt("deepset_test_output_ptetaphi_%s.txt"%(ending), output_list[1:])
 	print(output_list[1, :228])
